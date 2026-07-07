@@ -1,0 +1,216 @@
+.right-sidebar {
+  width: 350px;
+  background: linear-gradient(180deg, #0f172a 0%, #1a1f2e 100%);
+  border-left: 1px solid #334155;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.sidebar-tabs {
+  display: flex;
+  border-bottom: 1px solid #334155;
+  background: #0f172a;
+}
+
+.tab-button {
+  flex: 1;
+  padding: 1rem;
+  background: none;
+  border: none;
+  color: #94a3b8;
+  font-weight: 500;
+  font-size: 0.875rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s ease;
+}
+
+.tab-button:hover {
+  color: #cbd5e1;
+}
+
+.tab-button.active {
+  color: #3b82f6;
+  border-bottom-color: #3b82f6;
+}
+
+.sidebar-content {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Watchlist Panel */
+.watchlist-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 1rem;
+}
+
+.watchlist-input-group {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.watchlist-input {
+  flex: 1;
+  padding: 0.5rem 0.75rem;
+  background: rgba(15, 23, 42, 0.8);
+  border: 1px solid #334155;
+  border-radius: 0.375rem;
+  color: #e2e8f0;
+  font-size: 0.875rem;
+  transition: border-color 0.2s ease;
+}
+
+.watchlist-input:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+}
+
+.watchlist-input::placeholder {
+  color: #64748b;
+}
+
+.add-button {
+  padding: 0.5rem;
+  background: #3b82f6;
+  border: none;
+  border-radius: 0.375rem;
+  color: white;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s ease;
+}
+
+.add-button:hover {
+  background: #2563eb;
+}
+
+.watchlist-items {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.watchlist-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem;
+  background: rgba(30, 41, 59, 0.6);
+  border: 1px solid #334155;
+  border-radius: 0.375rem;
+  transition: all 0.2s ease;
+}
+
+.watchlist-item:hover {
+  background: rgba(30, 41, 59, 0.9);
+  border-color: #475569;
+}
+
+.watchlist-symbol {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.symbol-name {
+  font-weight: 600;
+  color: #e2e8f0;
+  min-width: 70px;
+  font-size: 0.875rem;
+}
+
+.symbol-price {
+  color: #cbd5e1;
+  font-weight: 500;
+  font-size: 0.8125rem;
+}
+
+.symbol-change {
+  font-weight: 600;
+  font-size: 0.8125rem;
+  min-width: 50px;
+  text-align: right;
+}
+
+.symbol-change.positive {
+  color: #10b981;
+}
+
+.symbol-change.negative {
+  color: #ef4444;
+}
+
+.remove-button {
+  padding: 0.25rem;
+  background: none;
+  border: none;
+  color: #64748b;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s ease;
+}
+
+.remove-button:hover {
+  color: #ef4444;
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  text-align: center;
+  color: #64748b;
+}
+
+.empty-state p {
+  margin: 0;
+}
+
+.empty-state p:first-child {
+  font-weight: 500;
+  margin-bottom: 0.5rem;
+}
+
+.empty-state .text-xs {
+  font-size: 0.75rem;
+}
+
+/* Scrollbar styling */
+.watchlist-items::-webkit-scrollbar {
+  width: 6px;
+}
+
+.watchlist-items::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.watchlist-items::-webkit-scrollbar-thumb {
+  background: #475569;
+  border-radius: 3px;
+}
+
+.watchlist-items::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+}

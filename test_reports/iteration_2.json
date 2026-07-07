@@ -1,0 +1,40 @@
+{
+  "summary": "Phase-2 backend testing for Algonid: idempotency keys, strategy scheduler, Kite OAuth, broker routing fallback, Fernet encryption-at-rest, Telegram CRUD, option-chain source flag. 16/16 new pytest cases in /app/backend/tests/test_phase2.py pass against the public preview URL. Found and fixed one real backend bug in /app/backend/services/options_analytics.py (Motor DB instance used in truthy context → NotImplementedError → 500 on GET /api/analytics/option-chain). Verified encryption-at-rest by direct DB inspection: broker api_key, api_secret, and telegram bot_token are all stored as Fernet tokens (gAAAA... prefix); plaintext does not leak. Idempotency collection has 3 indexes (TTL + unique (user_id,key) + default _id).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/analytics/option-chain", "issue": "FIXED. build_option_chain used `if db and user_id:` on a motor AsyncIOMotorDatabase which raises NotImplementedError (pymongo forbids truthy testing on database objects). Returned HTTP 500. Patched to `if db is not None and user_id:`. Verified by re-running suite — option-chain now returns source='synthetic' with 31 rows."},
+      {"endpoint": "POST /api/notifications/telegram/test", "issue": "Endpoint returns Telegram API's raw JSON (e.g., {ok:false, error_code:404, description:'Not Found'}) on bad token with HTTP 200. That's acceptable (graceful, no crash), but the response body shape is technically the upstream payload, not Algonid's envelope. Consider wrapping in {ok, telegram_response} for consistency with other endpoints."},
+      {"endpoint": "GET /api/notifications/telegram", "issue": "Inconsistent shape: when no row exists, returns {configured:false, enabled:false, chat_id:''} (no `has_token` key); when row exists, returns it. Suggest always returning has_token to make client code simpler. Tests handled this with .get('has_token', False)."}
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_phase2.py",
+    "/app/test_reports/pytest/phase2_results.xml"
+  ],
+  "action_items": [
+    "(Already fixed by testing agent) options_analytics.build_option_chain truthy-test on Motor DB; left fix in place.",
+    "Consider wrapping /api/notifications/telegram/test response in {ok, response} envelope instead of returning Telegram's raw JSON.",
+    "Make GET /api/notifications/telegram always return the same keys (always include has_token=False when no row)."
+  ],
+  "critical_code_review_comments": [
+    "services/options_analytics.py:99 — never compare a Motor DB with `if db`; pymongo explicitly disallows it. Already patched.",
+    "services/idempotency.claim() catches `Exception` broadly to detect duplicate-key on insert; that masks real Mongo errors (network/auth). Narrow to DuplicateKeyError from pymongo.errors and re-raise others.",
+    "services/strategy_scheduler.py — random.choice over symbols + heuristics on a random-walk tick history means firings are non-deterministic; for tests, an explicit force_fire param or a deterministic kind would make CI assertions stronger (current test asserts tracked>=1 OR fire_count>=1).",
+    "routers/broker_routes.kite_callback — `request_token` is logged in error message verbatim on exchange failure (`Kite session exchange failed: {exc}`); the kiteconnect SDK includes the token in its TokenException. Strip it before raising to avoid leaking into HTTP responses/logs.",
+    "routers/notification_routes.telegram_get returns has_token only when the row exists; clients must defensively use a default. Standardise the shape (always include has_token, default False).",
+    "services/crypto.decrypt_str silently returns ciphertext on InvalidToken — useful for legacy plaintext rows, but masks the case where the Fernet master key was rotated. Add an env flag / migration path or at least a warning log."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_phase2.py",
+    "/app/backend/services/options_analytics.py"
+  ],
+  "success_rate": {"backend": "100% (16/16 new phase-2 tests; 27/27 phase-1 regression also passes)"},
+  "test_credentials": "demo@trader.io / demo123. TV webhook secret: tv-webhook-secret-123. KITE_FERNET_KEY is set in backend/.env. No real Kite/Telegram keys are needed — bad keys are tested for graceful rejection.",
+  "seed_data_creation": "Tests created TEST_-prefixed strategies (deleted in teardown), TEST_alert_* TV signals + corresponding mock orders (kept; idempotency rows live 24h via TTL), one zerodha broker_connection (left in mock_mode=true after teardown), one transient telegram_settings row (deleted in teardown). Net DB delta: a few extra orders + tv_signals + idempotency keys under demo user, all clearly TEST_ named.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Phase-2 tests live at /app/backend/tests/test_phase2.py (run with `pytest backend/tests/test_phase2.py -v`). Phase-1 file backend_test.py still passes unchanged. The scheduler test sleeps ~16s; CI should be tolerant. The strategy scheduler is non-deterministic (random heuristics), so the assertion is `tracked>=1 OR fire_count>=1` — don't tighten it without making _signal_for_strategy deterministic. The KITE_FERNET_KEY is in backend/.env and must remain stable; rotating it will make previously-stored gAAAA blobs undecryptable (decrypt_str returns ciphertext as-is on InvalidToken). Encryption-at-rest verified directly via Motor: api_key/api_secret/bot_token all start with 'gAAAA'. Idempotency unique index on (user_id,key) is in place + a 24h TTL on created_at.",
+  "rca of the issue": "options_analytics 500: `if db and user_id:` invoked `bool(db)` on motor.motor_asyncio.AsyncIOMotorDatabase. PyMongo's Database class raises NotImplementedError from __bool__ to prevent the historical foot-gun of treating an empty collection as falsy. Repro: GET /api/analytics/option-chain with the user logged in. Fix: change to explicit None check (`if db is not None and user_id:`). Verified the endpoint now returns source='synthetic' with 31 rows."
+}

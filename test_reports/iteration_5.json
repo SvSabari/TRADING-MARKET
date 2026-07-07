@@ -1,0 +1,25 @@
+{
+  "summary": "Phase 5 full-stack regression (Algonid live feed + Claude signal explainer + real-broker scaffolding). 19/19 backend tests pass and all targeted frontend flows pass. Live-feed manager correctly defaults to synthetic (running=true, source='synthetic', live_symbol_count=0); /api/market/snapshot returns 50 ticks each with live=false; /api/market/history/RELIANCE returns synthetic-tagged candles. POST /api/ai/explain-signal returns a structured Claude response (reasoning ≤400 chars, suggested_sl<price, suggested_target>price for BUY bias, all required keys present); /api/ai/anomaly-sweep/status returns running=true, interval=60, symbols_per_cycle=3 with a non-null last_run_at. GET /api/brokers/schemas exposes all 7 brokers (zerodha, breeze, angel, fyers, upstox, dhan, mock); angel mock CRUD round-trip works; POST /api/brokers/angel/login returns 400 'Save your Angel credentials first.' without creds; GET /api/brokers/upstox/login-url returns 400 'Save your Upstox API key + secret first.' without creds; POST /api/orders with broker=angel/upstox/dhan/breeze/zerodha all fall back to mock and return FILLED. Frontend: status bar renders '● FEED·SYNTHETIC' with yellow (warn) dot; Signals page shows 8 columns [Time, Kind, Symbol, Price, Δ%, Vol ratio, Confidence, AI] with Brain explain buttons; clicking opens signal-explain-modal, Claude reasoning + SL ₹1,075.05 + TGT ₹1,090.75 + bias all render; X closes modal; Brokers page Angel & Upstox tabs each show their connect button and clicking without creds surfaces the correct error toast.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_phase5.py",
+    "/app/test_reports/pytest/phase5_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "/app/backend/services/live_feed_manager.py::_pick_connection picks the FIRST connected user globally — if user A enables Kite live, user B's snapshot also gets A's real ticks (multi-tenant leakage). Acceptable for a single-trader install but flag for production multi-user mode.",
+    "/app/backend/services/anomaly_sweep.py::_target_user_id always notifies the FIRST broker_connections doc; on a multi-tenant install the wrong user will get the alert. Consider scanning per-user or attributing notifications by symbol-ownership.",
+    "/app/backend/routers/broker_routes.py upstox_login_url builds the OAuth URL by string concatenation without urlencoding api_key or redirect_uri — works today because both are simple ASCII, but encode them with urllib.parse.urlencode for safety.",
+    "/app/backend/services/ai_engine.py::explain_signal falls back to price*0.997 / price*1.005 for SL/target when Claude returns 0 — this defaults to a BUY-biased SL/target even when side_bias is SELL. Should mirror the bias direction.",
+    "/app/backend/routers/ai_routes.py::anomaly_sweep_status currently leaks internal state to any authenticated user (it's status-only, harmless, but worth gating to admin in production)."
+  ],
+  "updated_files": ["/app/backend/tests/test_phase5.py"],
+  "success_rate": {"backend": "100% (19/19)", "frontend": "100% (status-bar feed indicator, Signals AI modal end-to-end with real Claude response, Brokers Angel + Upstox connect buttons with correct error toasts)"},
+  "test_credentials": "demo@trader.io / demo123 (per /app/memory/test_credentials.md)",
+  "seed_data_creation": "Transient TEST_ users, mock broker connections (angel/upstox/dhan/breeze/zerodha) and TV signals; all broker connections deleted at end of each parametrized order test.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Phase-5 suite lives at /app/backend/tests/test_phase5.py and runs in ~10s. It uses a session-scoped login fixture that sleeps 1.2s to dodge the iter-4 JWT same-second collision (still unfixed in /app/backend/auth.py::create_access_token — adding a jti claim removes that need). The /ai/explain-signal endpoint takes 2-5s per call (Claude Sonnet 4.5 streaming) — keep request timeouts ≥30s. /ai/anomaly-sweep/status returns last_run_at=None for ~60s after backend boot; if the suite is run immediately after a fresh supervisor restart, sleep 65s first. Frontend selectors that work: [data-testid=login-email-input], login-password-input, login-submit-btn, status-feed-source, signals-page, signal-explain-<SYMBOL>, signal-explain-modal/reasoning/sl/tgt/close, angel-connect-btn, upstox-connect-btn. Broker tabs are uppercase labels ('ANGEL ONE SMARTAPI', 'UPSTOX API') so substring match is needed.",
+  "rca of the issue": "n/a — no new bugs introduced this iteration. The previously-flagged JWT same-second collision (iter-4) remains the only known minor issue and is worked around in the test fixture."
+}

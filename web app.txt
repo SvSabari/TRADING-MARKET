@@ -1,0 +1,46 @@
+Here's how to download your full-stack Algonid web app (without the Android wrapper):
+
+## 📦 Recommended: "Save to GitHub" → Download ZIP
+
+1. **In this chat's input bar**, click the **"Save to GitHub"** button (top-right of the message composer area). This pushes the entire `/app` workspace to a fresh GitHub repository under your account.
+2. Once the push completes, go to **github.com → your-username → your-repo**.
+3. Click the green **"Code"** button → **"Download ZIP"**.
+4. The ZIP will contain everything:
+   ```
+   /backend          (FastAPI app — server.py, routers/, services/, models.py, requirements.txt, .env.example)
+   /frontend         (React app — src/, public/, package.json, capacitor.config.ts)
+   /memory           (PRD.md, test_credentials.md, CHANGELOG)
+   /android          (Capacitor Android wrapper — just delete this folder if you don't want it)
+   /data/parquet     (any captured 5-sec Nifty 50 parquet files)
+   /test_reports     (all 5 iteration JSON reports)
+   ```
+
+5. **To run locally** after download:
+   ```bash
+   # Backend- cd "H:\trading terminal\TRADING-TERMINAL-main\backend" 
+   cd backend && pip install -r "H:\trading terminal\TRADING-TERMINAL-main\backend\requirements.txt"
+   # set MONGO_URL + DB_NAME + EMERGENT_LLM_KEY + TV_WEBHOOK_SECRET + ENCRYPTION_KEY in .env
+   # set REACT_APP_BACKEND_URL=http://localhost:8001 in .env
+
+cd "H:\trading terminal\TRADING-TERMINAL-main\backend" 
+>> uvicorn server:app --reload
+
+
+PS H:\trading terminal> cd "H:\trading terminal\TRADING-TERMINAL-main\frontend"
+   npm start -> http://localhost:3000/
+
+   ```
+api- mrcnkleq1tiwa7m4
+secret--- uh1854rkq7ce05maickywh676gph6r45
+
+## 🗑️ To strip the Android wrapper
+
+After cloning, just delete these (the web app works fine without them):
+```bash
+rm -rf android/ frontend/capacitor.config.ts frontend/src/lib/biometric.js frontend/src/lib/push.js
+yarn remove @capacitor/core @capacitor/cli @capacitor/android @capacitor/push-notifications capacitor-native-biometric
+```
+
+> ⚠️ **GitHub export is a paid Emergent feature.** If you don't have it enabled, the alternative is to use the platform's **download workspace** option (if visible in your profile menu) — or upgrade your plan.
+
+Want me to also create a `README.md` with these setup steps before you export? Takes 30 seconds.

@@ -1,0 +1,100 @@
+{
+  "theme": "dark",
+  "archetype": "Archetype 4 (Swiss & High-Contrast) - Neo-Brutalist Financial Terminal",
+  "typography": {
+    "headings": {
+      "fontFamily": "Chivo, sans-serif",
+      "weights": ["400", "700", "900"],
+      "tracking": "tracking-tight",
+      "usage": "Authoritative, squarish headers for strategy names, module titles."
+    },
+    "body": {
+      "fontFamily": "IBM Plex Sans, sans-serif",
+      "weights": ["400", "500", "600"],
+      "usage": "Legible UI text, settings, explanations."
+    },
+    "data_and_code": {
+      "fontFamily": "JetBrains Mono, monospace",
+      "weights": ["400", "700"],
+      "usage": "CRITICAL: All numbers, prices, volumes, P&L, timestamps, and ticker symbols must use this font to ensure tabular alignment."
+    }
+  },
+  "colors": {
+    "background": {
+      "default": "#0A0A0A",
+      "description": "Deep obsidian / 10% grey for the application base."
+    },
+    "surface": {
+      "default": "#121212",
+      "hover": "#1A1A1A",
+      "description": "Cardless UI panels, sidebars, modal backgrounds."
+    },
+    "border": {
+      "default": "#222222",
+      "focus": "#444444",
+      "description": "Exposed grid lines, 1px solid panel separators."
+    },
+    "text": {
+      "primary": "#EDEDED",
+      "secondary": "#888888",
+      "muted": "#555555"
+    },
+    "accents": {
+      "buy_profit": "#00E676",
+      "sell_loss": "#FF3B30",
+      "warning_alert": "#FFD60A",
+      "primary_action": "#FFFFFF",
+      "brand_highlight": "#007AFF"
+    }
+  },
+  "layout_and_spacing": {
+    "strategy": "The 'Control Room' Grid",
+    "gaps": "gap-px or gap-1",
+    "padding": "Dense mode: p-2 for data rows, p-4 for panel headers",
+    "borderRadius": "rounded-none or rounded-sm (max 2px radius)",
+    "borders": "Exposed skeleton. Use border-r border-b border-[#222222] heavily to separate data points instead of cards."
+  },
+  "components": {
+    "buttons": "Flat surface, 1px border. Hover: invert colors or slight lightness bump. Never rounded.",
+    "tables": "Tabular lining, sticky headers, monospaced numbers, subtle alternating row colors.",
+    "charts": "Recharts/Shadcn charts, but MUST use the neon accent colors (Acid Green/Signal Red) on dark backgrounds.",
+    "inputs": "Shadcn inputs customized to square edges, high contrast focus rings (ring-white/50).",
+    "modals": "Backdrop blur is OK (glassmorphism), but surface must be stark #121212 with 1px border."
+  },
+  "motion": {
+    "interactions": "Instant/snappy. Transition duration 150ms maximum.",
+    "data_updates": "Subtle background flash (green/red) when a price or P&L ticks up or down. No layout shifts."
+  },
+  "media": {
+    "image_urls": {
+      "hero_background": {
+        "url": "https://images.unsplash.com/photo-1762279389083-abf71f22d338?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMjd8MHwxfHNlYXJjaHwyfHxmaW5hbmNpYWwlMjBjaGFydCUyMG5lb24lMjBhYnN0cmFjdHxlbnwwfHx8fDE3ODA5ODI1MzJ8MA&ixlib=rb-4.1.0&q=85",
+        "description": "Abstract neon chart lines for the Login/Register screen background.",
+        "usage": "Use with an overlay (bg-black/80) to maintain text legibility."
+      },
+      "texture_pattern": {
+        "url": "https://images.pexels.com/photos/36545253/pexels-photo-36545253.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "description": "Dark geometric grid pattern.",
+        "usage": "Can be used as a subtle background texture (opacity 5-10%) in empty states or side panels."
+      }
+    }
+  },
+  "icons": {
+    "library": "@phosphor-icons/react",
+    "style": "Technical, sharp, consistent stroke width. Use 'regular' or 'bold' weights, avoid 'duotone' in dense tables."
+  },
+  "accessibility": {
+    "contrast": "Ensure pure white text on primary/accent buttons. Use APCA contrast checks for data grids.",
+    "testing": "All interactive and key informational elements MUST include a `data-testid` attribute (e.g., data-testid='login-form-submit-button', data-testid='nifty-price-ticker')."
+  },
+  "instructions_to_main_agent": [
+    "1. Install fonts: Chivo, IBM Plex Sans, and JetBrains Mono via Google Fonts in index.html or global css.",
+    "2. Install Phosphor Icons: `yarn add @phosphor-icons/react`.",
+    "3. Override tailwind.config.js and index.css heavily. Map the variables above to the Shadcn UI CSS variables. Specifically set `--radius: 0px` or `2px`.",
+    "4. Do NOT use generic rounded cards with shadows. Use flat, adjacent panels separated by 1px borders.",
+    "5. For the Live Dashboard: Make it look like a Bloomberg Terminal / Pro Trading View. Dense, monospaced numbers, stark high-contrast text.",
+    "6. Whenever displaying P&L or live prices, flash a subtle background color on update.",
+    "7. Include `data-testid` on all buttons, form inputs, navigation links, and specific data rows (e.g., 'pnl-value', 'strategy-toggle-ema').",
+    "8. Mock the trading platform APIs (Zerodha/Breeze) visually and technically as requested."
+  ]
+}

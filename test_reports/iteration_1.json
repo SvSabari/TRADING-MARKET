@@ -1,0 +1,44 @@
+{
+  "summary": "First test cycle of Algonid algo-trading platform. 27/27 pytest backend tests pass against the public preview URL covering health, auth (register+login+/me+protected), market data (symbols/snapshot/history/top-movers), strategies CRUD+toggle, orders+positions+pnl, TradingView webhook-info/test-fire/raw-webhook (with bad-secret 403), signals/live, backtest/run, option-chain (31 rows + spot/atm/pcr/max_pain), oi-heatmap, iv-smile, brokers connect+disconnect, parquet status/files/preview, notifications mark-all-read, and Claude Sonnet 4.5 /ai/explain streaming. Playwright smoke tested login, auth-protected redirect, dashboard, TradingView fire test alert, Strategies, OptionChain, Notifications, ParquetData, Positions, Brokers, Backtest, and AI streaming — all flows render correctly with dark Neo-Brutalist theme, live ticker, total P&L, top gainers/losers, parquet running 5s with rows incrementing, and Claude AI streams a real response.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/strategies, PATCH /api/strategies/{id}, POST /api/orders", "issue": "Endpoints that declare response_model=Strategy/Order return the document with the Mongo alias '_id' instead of 'id', while their corresponding GET list endpoints return 'id'. Inconsistent response shape between create/update and list/read. Frontend works because pages re-fetch the list after creation, but any caller that consumes the create-response directly will break. Likely root cause: BaseDocument has alias='_id' on the id field — FastAPI's response_model serialization in pydantic v2 picks up the alias. Fix: set response_model_by_alias=False on the route or override to_mongo/serialization to use field name on output."},
+      {"endpoint": "GET /api/market/symbols", "issue": "Returns key 'nifty50' (not 'symbols') — fine, just call out so frontend/docs stay consistent."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Dashboard + several pages with recharts", "issues": ["Console warns 'width(-1) and height(-1) of chart should be greater than 0' on initial paint — ResponsiveContainer parent has no defined min-height; charts still render after layout settles but the warning fires on every nav. Recommend setting explicit min-height or aspect on the chart wrappers."]},
+      {"screen": "Strategy manager / Available kinds", "issues": ["Backend /strategies/kinds returns 5 kinds (incl. VWAP Scalping) but only 4 cards visible in the grid in the captured screenshot — VWAP card may be off-screen at 1920 width. Verify the grid wraps to two rows so VWAP Scalping is always visible."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "Make POST/PATCH responses for Strategy and Order return 'id' (not '_id') to match list endpoints. Easiest: pass response_model_by_alias=False explicitly or drop the alias on output (model_dump(by_alias=False) before returning).",
+    "Add an explicit min-height (or aspect) on ResponsiveContainer wrappers to silence the recharts width/height(-1) warnings on dashboard/option-chain/AI/etc.",
+    "Verify VWAP Scalping kind card is visible on the Strategies page (it is returned by /api/strategies/kinds but was only 4 of 5 in the rendered grid)."
+  ],
+  "critical_code_review_comments": [
+    "BaseDocument uses alias='_id' on the id field; this leaks the Mongo alias through any endpoint that returns the model instance directly under response_model — cross-cuts strategies, orders (and any future model). Centralise this in BaseDocument or in a custom JSON encoder.",
+    "tradingview webhook /api/tradingview/webhook/{user_id} is intentionally public but only protected by a shared query/body secret loaded from env; consider per-user webhook secret to avoid cross-user spoofing if the global secret leaks.",
+    "/api/orders has no idempotency key — repeated fires from the TV webhook on the same alert id can double-execute.",
+    "options_analytics.py is synthetic but deterministic per spot — OK for MVP; document this clearly in /api docs so consumers don't mistake the IV/OI for real."
+  ],
+  "updated_files": [
+    "/app/backend/tests/__init__.py",
+    "/app/backend/tests/backend_test.py"
+  ],
+  "success_rate": {"backend": "100% (27/27)", "frontend": "100% of smoke-tested flows (login, dashboard, TV fire, strategies, option-chain, parquet, positions, brokers, backtest, AI streaming, notifications)"},
+  "test_credentials": "demo@trader.io / demo123 (already seeded). TV webhook secret: tv-webhook-secret-123.",
+  "seed_data_creation": "Tests created a few TEST_-prefixed strategies (deleted by the CRUD test), and a handful of TEST_ orders/signals/notifications via /api/orders, /api/tradingview/test-fire, and /api/tradingview/webhook. These accumulate under the demo user but are clearly TEST_ named for easy cleanup if needed.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Backend tests live at /app/backend/tests/backend_test.py and run cleanly with `pytest backend/tests/backend_test.py`. Junit XML at /app/test_reports/pytest/pytest_results.xml. UI uses kebab-case data-testids — note the TradingView fire button is `tv-test-fire-btn` (not `tv-fire-test-btn`). When testing parquet preview, wait ~6s after first request so the 5-second capture flush has produced at least one file. AI /ai/explain returns plain-text streaming (not SSE) — read with requests stream=True or fetch reader.read(). The id/_id inconsistency in POST/PATCH responses is the only real backend bug found.",
+  "rca of the issue": "id vs _id leak: backend/db.py BaseDocument declares `id: str = Field(default_factory=..., alias='_id')` with `populate_by_name=True`. When FastAPI serializes a model instance returned from a route declared with `response_model=Strategy`/`response_model=Order`, pydantic v2's dump (via FastAPI's jsonable_encoder) emits the alias '_id' because of how alias-priority + ConfigDict(populate_by_name=True) interacts under FastAPI's response_model path. List endpoints call `.model_dump()` themselves (default by_alias=False) so they return 'id'. Reproduction: `curl -X POST /api/strategies -d '{...}'` → '_id' in body; `GET /api/strategies` → 'id' in body. Mitigation: pass response_model_by_alias=False on the route, or remove the alias and convert in to_mongo/from_mongo manually, or return `strat.model_dump()` directly without response_model."
+}

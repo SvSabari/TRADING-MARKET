@@ -1,0 +1,37 @@
+{
+  "summary": "Phase-4 code-review cleanup regression. All 24 backend tests pass: logout/blacklist, backtest refactor (ema_crossover + 12 strategy/symbol combos), option-chain greeks (31 rows, ATM delta bounds), idempotency, scheduler (running + fires>0), per-user webhook secret, telegram platform bot, broker schemas (7 brokers), and the hardcoded-secret static check.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "POST /api/auth/login",
+        "issue": "Two consecutive logins for the same user within the same UTC second return BYTE-IDENTICAL JWTs because the payload {sub,email,exp} is identical (exp is rounded to integer seconds and no jti/iat is included). Consequence: if a user logs out and immediately re-logs-in within ~1s, the freshly issued token is already in token_blacklist (same string) and every subsequent request fails with 401 'Token revoked' until the next second. Mitigation: add a random `jti` (e.g. uuid4().hex) to the JWT payload in create_access_token() so tokens are always unique."
+      }
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_phase4.py",
+    "/app/test_reports/pytest/phase4_results.xml"
+  ],
+  "action_items": [
+    "Add a unique `jti` claim (uuid4) to JWT payload in /app/backend/auth.py::create_access_token so tokens issued within the same second are not byte-identical (otherwise logout-then-immediate-re-login leaves the user with a pre-blacklisted token)."
+  ],
+  "critical_code_review_comments": [
+    "/app/backend/auth.py::create_access_token does not include a `jti` or `iat` — two logins in the same second produce identical JWTs. Adding `jti: uuid4().hex` makes each token unique and fixes the logout/re-login race.",
+    "/app/backend/auth.py::get_current_user does an extra MongoDB roundtrip on token_blacklist for every request. For hot paths consider an in-memory LRU cache (token -> revoked bool with short TTL) since the TTL index already prunes expired entries.",
+    "/app/backend/routers/auth_routes.py::logout always returns {ok:true} even when the token is invalid/forged — acceptable (idempotent), but consider also returning a 401 for malformed bearers to surface client bugs. Current behavior matches the spec.",
+    "/app/backend/services/strategy_scheduler.py::_signal_for_strategy uses random.choice on symbols and probabilistic thresholds — fine for paper trading, but the fires>0 outcome is non-deterministic per kind. Tests pinned to gamma_scalping (40% per-eval fire) for reliability.",
+    "/app/backend/tests/backend_test.py line 37 now reads TV_SECRET via os.environ.get with a literal default — acceptable, but ideally the default should be removed to force CI to fail fast when env is missing."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_phase4.py (new)"
+  ],
+  "success_rate": {"backend": "100% (24/24)", "frontend": "not tested (skipped per request)"},
+  "test_credentials": "demo@trader.io / demo123 (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "Created transient TEST_ strategies/signals/idempotency keys during tests; cleaned up after run (token_blacklist entries left in place — they expire via TTL on expires_at).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Phase-4 suite lives at /app/backend/tests/test_phase4.py and runs in ~30s. The session-scoped `demo_login` fixture sleeps 1.2s on entry so its JWT 'exp' second differs from any subsequent logout-test token (works around the same-second JWT-collision issue described in backend_issues.minor). If the main agent adds a `jti` claim to create_access_token, those sleeps can be removed and the suite will still pass.",
+  "rca of the issue": "RCA — JWT collision: jwt.encode serializes the `exp` datetime to an integer (Unix seconds). When the only varying piece of the payload is `exp`, two logins issued within the same wall-clock second produce identical JWTs (same header + same payload + same secret => same signature). Logout blacklists the JWT string; an immediate re-login returns the same string, which is already in token_blacklist, so the user is locked out until the next second. Reproduction: POST /api/auth/login → POST /api/auth/logout → POST /api/auth/login → GET /api/auth/me within 1s window returns 401 'Token revoked'. Mitigation: add `'jti': uuid.uuid4().hex` (and optionally `'iat'` with timestamp) to the JWT payload in /app/backend/auth.py::create_access_token."
+}

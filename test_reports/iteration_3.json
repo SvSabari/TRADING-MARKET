@@ -1,0 +1,37 @@
+{
+  "summary": "Phase-3 backend testing for Algonid: broker schemas (7 brokers), encrypted-at-rest credentials for angel (4 fields), per-user TV webhook secret + rotation, Telegram platform-bot fallback, Black-Scholes IV + Greeks on option chain, /analytics/greeks/{strike}, and the real parquet-backed backtester across 5 strategy kinds. 20/21 new pytest cases in /app/backend/tests/test_phase3.py pass against the public preview URL. ONE real backend bug found in /app/backend/services/options_analytics.py::_compute_iv_and_greeks — when the Newton-Raphson IV solver fails to converge (deep ITM/OTM strikes where premium ≈ intrinsic), the corresponding ce_greeks / pe_greeks dict is never populated, violating the phase-3 contract 'every row has ce_greeks and pe_greeks'. Phase-1 (27/27) + phase-2 (16/16) regression suites still pass.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/analytics/option-chain", "issue": "6 of 31 rows are missing ce_greeks or pe_greeks. Affected synthetic chain (spot~20055): strikes 19400/19500/19550/19750 missing pe_greeks; strikes 20250/20400 missing ce_greeks. Root cause: services/options_analytics.py::_compute_iv_and_greeks() only sets row['ce_greeks']/row['pe_greeks'] inside `if iv is not None and iv > 0:`. For deep ITM/OTM strikes where the market premium is essentially intrinsic, the Newton-Raphson solver in services/greeks.implied_vol returns None (no convergence), so greeks are never attached. Phase-3 spec says 'every row has non-zero ce_iv, pe_iv, ce_greeks and pe_greeks'. Suggested fix: when implied_vol returns None, fall back to bs_greeks(sigma=row_iv/100) using the seeded synthetic IV (already on the row) so the greeks dict is always populated, or bisect IV in [0.001, 5.0]."},
+      {"endpoint": "GET /api/notifications/telegram", "issue": "Carry-over from phase-2: now returns has_token consistently across both branches (row vs no-row). Verified by phase-3 test_telegram_using_platform_bot_when_only_chat_id. No action needed."}
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_phase3.py",
+    "/app/test_reports/pytest/phase3_results.xml"
+  ],
+  "action_items": [
+    "Fix services/options_analytics.py::_compute_iv_and_greeks so that ce_greeks AND pe_greeks are populated for every row, even when the Newton-Raphson IV solver fails to converge. Simplest fix: after the `if iv is not None and iv > 0:` block, add an `else:` that uses the row's existing IV (row['ce_iv']/100 or row['pe_iv']/100) to compute greeks. Re-run test_option_chain_greeks_populated to confirm."
+  ],
+  "critical_code_review_comments": [
+    "services/options_analytics.py:84-96 — Newton-Raphson IV is fragile (fails on deep ITM/OTM where premium == intrinsic). Either (a) always pass IV through bisection as a fallback in services/greeks.implied_vol, or (b) in _compute_iv_and_greeks, always assign greeks using the seeded synthetic IV when the solver bails. Currently the row silently loses its greeks dict.",
+    "routers/broker_routes.upsert() — body.api_key / body.api_secret are accepted both at the top level AND inside body.credentials. setdefault() means credentials win if both supplied, which is a reasonable choice, but the dual-path API is confusing; consider deprecating the top-level api_key/api_secret in favour of credentials-only.",
+    "routers/broker_routes._to_public() — has_keys=bool(b.api_key) or any(creds.values()) — `any(creds.values())` will short-circuit truthy on a Fernet ciphertext, which is fine, but if a value is intentionally cleared the field stays in the dict; consider stripping empty values on update so fields_filled reflects reality after partial clears.",
+    "routers/auth_routes.webhook-secret/rotate — does not invalidate existing in-flight TV signals; if a user rotates while a TradingView alert is in transit, the alert will 403. Acceptable, but worth a UI warning.",
+    "services/telegram.send_for_user with platform bot but bad chat_id silently 200s with ok:false. Consider surfacing the Telegram error_code to the in-app notification so users know why their alert didn't reach them.",
+    "services/backtest.py — relies on the parquet capture having warmed up. Endpoint correctly falls back to synthetic with reason='no_parquet_data' / 'insufficient_candles', good. Make sure the parquet capture interval (5s) and at-least-one-flush sleep is documented for new contributors.",
+    "models.BrokerConnection still exposes top-level api_key / api_secret fields alongside the new generic credentials dict — eventually consolidate to one source of truth to avoid drift."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_phase3.py"
+  ],
+  "success_rate": {"backend": "95% (20/21 phase-3 + 16/16 phase-2 + 27/27 phase-1)"},
+  "test_credentials": "demo@trader.io / demo123. Per-user TV secret is auto-generated and returned in login response. KITE_FERNET_KEY + TELEGRAM_BOT_TOKEN already set in backend/.env.",
+  "seed_data_creation": "Tests created and torn down: one angel broker_connection (deleted in test teardown), two registered TEST_rotate_* / TEST_other_* users (left in DB, harmless), several TEST_pus alert TV signals + mock orders under demo user, one transient telegram_settings row (deleted in teardown). Net DB delta: a handful of TEST_-named TV signals + orders + 2 test users.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Phase-3 tests live at /app/backend/tests/test_phase3.py (run with `pytest backend/tests/test_phase3.py -v`). The single failing test (test_option_chain_greeks_populated) catches a real business-logic bug, not a test issue. After the fix lands, also assert PE@ATM delta is in [-0.7,-0.3] and CE@ATM delta in [0.3,0.7] (those already pass with current ATM row but the bug masks the assertion on neighbours). Phase-1 (backend_test.py) and phase-2 (test_phase2.py) regression suites still pass unchanged. Parquet capture continues to run — RELIANCE/HDFCBANK/INFY/etc all have several thousand 5-second ticks accumulated under /app/data/parquet/<today>/. The backtester correctly reports data_source='parquet' for those and data_source='synthetic' with reason='no_parquet_data' for unknown symbols. All 5 strategy kinds (ema_crossover/vwap_scalping/oi_breakout/smart_money/gamma_scalping) return valid metrics + non-empty equity_curve on HDFCBANK 1d.",
+  "rca of the issue": "GET /api/analytics/option-chain — _compute_iv_and_greeks() at services/options_analytics.py:77 conditionally writes greeks only when implied_vol() returns a positive value. For deep ITM/OTM strikes the market premium is essentially intrinsic (e.g. CE@K=19550 ltp=552.59 with spot=20055 → intrinsic ≈ 505, time value ≈ 47), Newton-Raphson on Black-Scholes diverges, the function returns None, and the row keeps neither greeks dict. Repro: GET /api/analytics/option-chain — count rows where 'ce_greeks' or 'pe_greeks' is missing/None. Mitigation: in _compute_iv_and_greeks, after the `if iv is not None and iv > 0` block, attach greeks using the row's seeded IV (row['ce_iv']/100 or row['pe_iv']/100) as a fallback, OR make services/greeks.implied_vol fall back to a bracketing bisection on [1e-3, 5.0] when Newton-Raphson fails to converge."
+}
