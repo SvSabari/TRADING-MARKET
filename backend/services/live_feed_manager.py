@@ -51,27 +51,49 @@ class LiveFeedManager:
     def status(self) -> dict:
         return {
             "running": self.running,
-            "source": tick_engine.live_source or "synthetic",
+            "source": tick_engine.live_source or "none",
             "active_broker": self._active_broker,
             "active_user_id": self._active_user_id,
-            "live_symbol_count": len(tick_engine.live_symbols),
+            "live_symbol_count": len(tick_engine.live_symbols) + len(tick_engine.nse_symbols),
+            "live_symbols": list(tick_engine.live_symbols.union(tick_engine.nse_symbols)),
             "feed": self._active.status() if self._active else None,
         }
 
+    async def add_symbols(self, symbols: list[str]) -> None:
+        """Dynamically subscribe to additional symbols on the active feed."""
+        if not self._active:
+            return
+            
+        if hasattr(self._active, 'add_symbols') and hasattr(self._active, 'symbol_map'):
+            # active.symbol_map is token -> symbol. Invert to get symbol -> token.
+            sym_to_tok = {sym: tok for tok, sym in self._active.symbol_map.items()}
+            tokens = []
+            for s in symbols:
+                if s in sym_to_tok:
+                    tokens.append(sym_to_tok[s])
+                else:
+                    # If not a known base symbol, assume it's already a raw token (e.g. from Options Chain)
+                    tokens.append(str(s))
+            
+            if tokens:
+                await self._active.add_symbols(tokens)
+        else:
+            # Rebuild feed to pick up new tokens if dynamic sub isn't supported
+            await self.force_reconnect()
+
     # ---------------------------------------------------------- selection
     async def _pick_connection(self) -> Optional[dict]:
-        """Find the best live broker connection in the DB."""
+        """Find the designated live data broker connection in the DB."""
         if LOCAL_ONLY:
             return None
-        # Priority order (breeze added)
-        for broker in ("zerodha", "upstox", "angel", "breeze"):
-            # We want to pull live data even if mock_mode is True!
-            doc = await db.broker_connections.find_one({
-                "broker": broker,
-                "connected": True,
-            })
-            if doc and (doc.get("access_token") or doc.get("credentials")):
-                return {"broker": broker, **doc}
+        
+        # Strictly look for the broker where is_data_feed is True
+        doc = await db.broker_connections.find_one({
+            "is_data_feed": True,
+            "connected": True,
+        })
+        if doc and (doc.get("access_token") or doc.get("credentials")):
+            return {"broker": doc["broker"], **doc}
         return None
 
     async def _build_feed(self, conn: dict) -> Optional[LiveFeed]:
@@ -79,7 +101,7 @@ class LiveFeedManager:
         creds = conn.get("credentials") or {}
 
         def _on_tick(symbol: str, ltp: float, volume_delta: int, _raw: dict) -> None:
-            tick_engine.push_live_tick(symbol, ltp, volume_delta)
+            tick_engine.push_live_tick(symbol, ltp, volume_delta, _raw)
 
         try:
             if broker == "zerodha":
@@ -127,6 +149,18 @@ class LiveFeedManager:
                     api_key=api_key, secret_key=secret_key, session_token=session_token,
                     symbol_map=breeze_token_map(), on_tick=_on_tick,
                 )
+            if broker == "aliceblue":
+                from services.feeds.aliceblue_feed import AliceblueFeed
+                from services.instrument_map import aliceblue_token_map
+                client_code = decrypt_str(creds.get("user_id", ""))
+                api_key = decrypt_str(creds.get("api_key", ""))
+                session_id = decrypt_str(conn.get("access_token", ""))
+                if not (client_code and api_key and session_id):
+                    return None
+                return AliceblueFeed(
+                    client_code=client_code, api_key=api_key, session_id=session_id,
+                    symbol_map=aliceblue_token_map(), on_tick=_on_tick,
+                )
         except Exception as e:
             logger.exception("Failed to build %s feed: %s", broker, e)
         return None
@@ -143,15 +177,29 @@ class LiveFeedManager:
         self._active_user_id = None
         tick_engine.live_source = None
 
+    async def force_reconnect(self) -> None:
+        """Force the current feed to stop and immediately rebuild with new credentials."""
+        await self._stop_active()
+        await self._recheck()
+
     async def _recheck(self) -> None:
         conn = await self._pick_connection()
         if not conn:
             if self._active:
-                logger.info("No live broker connections left — reverting to synthetic")
+                logger.info("No live broker connections left — stopping feeds")
                 await self._stop_active()
             return
+        # check if feed is connected OR actively connecting (task still running)
+        is_healthy = False
+        if self._active:
+            if getattr(self._active, 'connected', False):
+                is_healthy = True
+            elif hasattr(self._active, '_task') and self._active._task and not self._active._task.done():
+                is_healthy = True
+
         # already running the right feed for the right user?
-        if (self._active and self._active_broker == conn["broker"]
+        if (self._active and is_healthy 
+                and self._active_broker == conn["broker"]
                 and self._active_user_id == conn.get("user_id")):
             return
         # switch

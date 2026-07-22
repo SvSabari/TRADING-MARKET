@@ -27,7 +27,7 @@ export default function Positions() {
         <h1 style={{ fontFamily: "Chivo", fontWeight: 900, fontSize: 28, letterSpacing: "-0.02em" }}>Positions.</h1>
         <p className="dim text-sm mt-1">Live mark-to-market on every position. P&L recomputed every 2s.</p>
       </div>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-px bg-[#222]">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <StatTile label="Total P&L" value={fmtRupee(pnl?.total_pnl || 0)} accent={(pnl?.total_pnl || 0) >= 0 ? "buy" : "sell"} big testid="pos-pnl-total" />
         <StatTile label="Unrealized" value={fmtRupee(pnl?.unrealized_pnl || 0)} accent={(pnl?.unrealized_pnl || 0) >= 0 ? "buy" : "sell"} testid="pos-pnl-unrealized" />
         <StatTile label="Realized" value={fmtRupee(pnl?.realized_pnl || 0)} testid="pos-pnl-realized" />

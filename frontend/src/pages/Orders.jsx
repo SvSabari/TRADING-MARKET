@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { fmtDateTime, fmtInt, fmtNum } from "@/lib/format";
@@ -84,7 +85,8 @@ export default function Orders() {
       </Panel>
 
       <Panel title="Executions" kicker={`${orders.length} orders`}>
-        <table className="w-full text-xs">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[700px] text-xs">
           <thead><tr className="dim text-[10px] uppercase tracking-widest border-b border-[#222]">
             <th className="text-left py-2 px-4">Time</th>
             <th className="text-left py-2 px-4">Symbol</th>
@@ -104,13 +106,20 @@ export default function Orders() {
                 <td className="py-2 px-4 text-right num">{fmtInt(o.qty)}</td>
                 <td className="py-2 px-4 text-right num">{fmtNum(o.price)}</td>
                 <td className="py-2 px-4 mono dim">{o.broker}</td>
-                <td className="py-2 px-4 mono dim">{o.source}</td>
+                <td className="py-2 px-4 mono dim">
+                  {o.source.startsWith("strategy:") ? (
+                    <Link to="/strategies" className="text-blue-500 hover:underline" title="Click to view & manage this strategy">{o.source}</Link>
+                  ) : (
+                    o.source
+                  )}
+                </td>
                 <td className={`py-2 px-4 mono ${o.status === "FILLED" ? "buy" : ""}`}>{o.status}</td>
               </tr>
             ))}
             {orders.length === 0 && <tr><td colSpan={8} className="p-8 text-center dim text-xs">No orders yet.</td></tr>}
           </tbody>
         </table>
+        </div>
       </Panel>
     </div>
   );

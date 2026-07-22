@@ -34,44 +34,19 @@ BROKER_SCHEMAS = {
              "help": "Generated daily via the Breeze customer-login flow."},
         ],
     },
-    "angel": {
-        "name": "Angel One SmartAPI",
-        "docs": "https://smartapi.angelbroking.com",
-        "fields": [
-            {"name": "api_key", "label": "API Key", "type": "text", "required": True},
-            {"name": "client_code", "label": "Client Code", "type": "text", "required": True,
-             "help": "Your Angel client ID, e.g. A123456."},
-            {"name": "pin", "label": "MPIN", "type": "password", "required": True},
-            {"name": "totp_secret", "label": "TOTP Secret", "type": "password", "required": True,
-             "help": "Base32 TOTP seed from the Angel SmartAPI portal."},
-        ],
-    },
-    "fyers": {
-        "name": "Fyers API v3",
-        "docs": "https://myapi.fyers.in",
+    "aliceblue": {
+        "name": "Alice Blue",
+        "docs": "https://ant.aliceblueonline.com/",
         "redirect_required": True,
         "fields": [
-            {"name": "api_key", "label": "App ID", "type": "text", "required": True},
-            {"name": "api_secret", "label": "Secret ID", "type": "password", "required": True},
+            {"name": "user_id", "label": "Client ID", "type": "text", "required": True,
+             "help": "Your Alice Blue Client Code."},
+            {"name": "api_key", "label": "API Key", "type": "text", "required": True,
+             "help": "App Code from Alice Blue Developer Portal."},
+            {"name": "api_secret", "label": "API Secret", "type": "password", "required": True,
+             "help": "App Secret from Alice Blue Developer Portal."},
         ],
-    },
-    "upstox": {
-        "name": "Upstox API",
-        "docs": "https://upstox.com/developer",
-        "redirect_required": True,
-        "fields": [
-            {"name": "api_key", "label": "API Key", "type": "text", "required": True},
-            {"name": "api_secret", "label": "API Secret", "type": "password", "required": True},
-        ],
-    },
-    "dhan": {
-        "name": "Dhan HQ",
-        "docs": "https://dhanhq.co/docs",
-        "fields": [
-            {"name": "client_id", "label": "Client ID", "type": "text", "required": True},
-            {"name": "access_token", "label": "Access Token", "type": "password", "required": True,
-             "help": "Generated from the Dhan trader portal → API."},
-        ],
+        "post_save_action": "aliceblue_oauth",
     },
     "mock": {
         "name": "Mock (Paper trading)",

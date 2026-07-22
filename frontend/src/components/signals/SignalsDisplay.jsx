@@ -12,7 +12,7 @@ const SIGNAL_CONFIG = {
 
 export default function SignalsDisplay({ signals = [] }) {
   const niftySignal = useMemo(() => {
-    return signals.find((s) => s.symbol === "NIFTY 50") || signals[0];
+    return signals.find((s) => s.symbol === "NIFTY") || signals[0];
   }, [signals]);
 
   if (!niftySignal) {

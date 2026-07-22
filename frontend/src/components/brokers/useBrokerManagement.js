@@ -30,9 +30,11 @@ export function useBrokerManagement() {
     }
   }, [load]);
 
-  const save = useCallback(async (selected, values, mockMode, schemaName) => {
+  const save = useCallback(async (selected, values, mockMode, schemaName, isDataFeed, isOrderExec) => {
     const payload = {
       broker: selected, mock_mode: mockMode,
+      is_data_feed: isDataFeed,
+      is_order_exec: isOrderExec,
       credentials: values,
       api_key: values.api_key || "",
       api_secret: values.api_secret || "",
@@ -40,6 +42,22 @@ export function useBrokerManagement() {
     await api.post("/brokers", payload);
     toast.success(`${schemaName || selected} saved (mock mode = ${mockMode})`);
     load();
+  }, [load]);
+
+  const setMode = useCallback(async (conn, isDataFeed, isOrderExec) => {
+    const payload = {
+      broker: conn.broker,
+      mock_mode: conn.mock_mode,
+      is_data_feed: isDataFeed,
+      is_order_exec: isOrderExec,
+    };
+    try {
+      await api.post("/brokers", payload);
+      toast.success(`${conn.broker} mode updated`);
+      load();
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Failed to update broker mode");
+    }
   }, [load]);
 
   const remove = useCallback(async (broker) => {
@@ -84,5 +102,15 @@ export function useBrokerManagement() {
     }
   }, []);
 
-  return { conns, schemas, available, save, remove, connectKite, disconnectKite, connectAngel, connectUpstox, reload: load };
+  const connectAliceblue = useCallback(async () => {
+    try {
+      const { data } = await api.get("/brokers/aliceblue/login-url");
+      toast.message("Redirecting to Alice Blue…", { description: data.note });
+      window.location.href = data.login_url;
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Save Alice Blue API key (App Code) + Client ID first.");
+    }
+  }, []);
+
+  return { conns, schemas, available, save, setMode, remove, connectKite, disconnectKite, connectAngel, connectUpstox, connectAliceblue, reload: load };
 }

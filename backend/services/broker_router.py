@@ -181,16 +181,11 @@ async def _route_breeze(db, user_id: str, *, symbol: str, side: str, qty: int,
     doc = await db.broker_connections.find_one({"user_id": user_id, "broker": "breeze"})
     if not doc or doc.get("mock_mode"):
         return None
-    creds = doc.get("credentials") or {}
-    api_key = decrypt_str(creds.get("api_key", ""))
-    secret_key = decrypt_str(creds.get("api_secret", ""))
-    session_token = decrypt_str(creds.get("session_token", ""))
-    if not (api_key and secret_key and session_token):
+    from services.brokers.breeze_client import get_user_breeze_client
+    client = await get_user_breeze_client(db, user_id)
+    if not client:
         return None
     try:
-        from services.brokers.breeze_client import BreezeClient
-        client = BreezeClient(api_key=api_key, secret_key=secret_key,
-                              session_token=session_token)
         order_id = client.place_order(
             stock_code=symbol, exchange_code="NSE",
             transaction_type=side.upper(), quantity=int(qty),
@@ -202,6 +197,39 @@ async def _route_breeze(db, user_id: str, *, symbol: str, side: str, qty: int,
             return _live_response(order_id, price, "live-breeze")
     except Exception as e:
         logger.warning("Breeze order failed, falling back: %s", e)
+    return None
+
+
+async def _route_aliceblue(db, user_id: str, *, symbol: str, side: str, qty: int,
+                           price: float, order_type: str, product: str) -> Optional[Dict]:
+    doc = await db.broker_connections.find_one({"user_id": user_id, "broker": "aliceblue"})
+    if not doc or doc.get("mock_mode") or not doc.get("access_token"):
+        return None
+    from services.brokers.aliceblue_client import get_user_aliceblue_client
+    client = await get_user_aliceblue_client(db, user_id)
+    if not client:
+        return None
+    
+    # Needs instrument token mapping in the future, for now fallback to just standard symbol
+    # This requires ALICEBLUE_TOKENS map in instrument_map.py
+    from services.instrument_map import ALICEBLUE_TOKENS
+    instrument_token = next((k for k, sym in ALICEBLUE_TOKENS.items() if sym == symbol), None)
+    if not instrument_token:
+        # Fallback format: NSE|26000
+        instrument_token = f"NSE|{symbol}"
+        
+    try:
+        order_id = client.place_order(
+            instrument_token=instrument_token,
+            transaction_type=side.upper(), quantity=int(qty),
+            order_type=order_type,
+            product="I" if product == "MIS" else "D",
+            price=price if order_type == "LIMIT" else None,
+        )
+        if order_id:
+            return _live_response(order_id, price, "live-aliceblue")
+    except Exception as e:
+        logger.warning("AliceBlue order failed, falling back: %s", e)
     return None
 
 
@@ -219,16 +247,18 @@ _LIVE_DISPATCH = {
     "upstox": _route_upstox,
     "dhan": _route_dhan,
     "breeze": _route_breeze,
+    "aliceblue": _route_aliceblue,
 }
 
 
 async def route_order(db, user_id: str, broker_name: str, *,
                       symbol: str, side: str, qty: int, price: float,
                       order_type: str = "MARKET", product: str = "MIS") -> Dict:
-    """High-level routing: tries the real broker if connected, falls back to mock."""
-    if LOCAL_ONLY:
+    """High-level routing: routes to the real broker if requested, otherwise mock."""
+    if LOCAL_ONLY or broker_name.lower() == "mock":
         return await _mock.place_order(symbol=symbol, side=side, qty=qty, price=price,
                                        order_type=order_type, product=product)
+                                       
     handler = _LIVE_DISPATCH.get(broker_name.lower())
     if handler is not None:
         result = await handler(
@@ -237,6 +267,7 @@ async def route_order(db, user_id: str, broker_name: str, *,
         )
         if result is not None:
             return result
-    # default: mock
-    return await _mock.place_order(symbol=symbol, side=side, qty=qty, price=price,
-                                   order_type=order_type, product=product)
+            
+    # If a real broker was requested but failed (e.g. API error, IP rejection)
+    from fastapi import HTTPException
+    raise HTTPException(status_code=400, detail=f"Broker {broker_name} rejected the order or is disconnected.")

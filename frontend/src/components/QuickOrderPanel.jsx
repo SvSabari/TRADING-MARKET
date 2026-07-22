@@ -7,6 +7,9 @@ import "./QuickOrderPanel.css";
 const INDICES = [
   { label: "NIFTY 50", value: "NIFTY" },
   { label: "BANK NIFTY", value: "BANKNIFTY" },
+  { label: "FINNIFTY", value: "FINNIFTY" },
+  { label: "MIDCP NIFTY", value: "MIDCPNIFTY" },
+  { label: "NIFTY NEXT 50", value: "NIFTYNXT50" },
   { label: "SENSEX", value: "SENSEX" },
 ];
 
@@ -52,28 +55,33 @@ export default function QuickOrderPanel({ watchlist = [] }) {
   }, [symbol, prices]);
 
   const placedOrder = async () => {
-    if (!symbol || !quantity || !price) {
-      toast.error("Please fill all required fields");
+    if (!quantity || !price) {
+      toast.error("Please fill quantity and price");
+      return;
+    }
+    if (instrumentType === "stock" && !symbol) {
+      toast.error("Please select a symbol");
+      return;
+    }
+    if (instrumentType === "option" && (!selectedIndex || !strikePrice)) {
+      toast.error("Please fill index and strike price");
       return;
     }
 
     setLoading(true);
     try {
       const payload = {
-        symbol,
         side,
         qty: parseInt(quantity),
         price: parseFloat(price),
       };
 
-      // For futures and options, we'd need additional fields
-      // For now, mock it as equity orders
       if (instrumentType === "stock") {
         payload.symbol = symbol;
       } else if (instrumentType === "futures") {
-        payload.symbol = `${symbol}_FUT`;
+        payload.symbol = expiry ? `${selectedIndex}_${expiry}_FUT` : `${selectedIndex}_FUT`;
       } else if (instrumentType === "option") {
-        payload.symbol = `${symbol}_${strikePrice}_${optionType}`;
+        payload.symbol = expiry ? `${selectedIndex}_${expiry}_${strikePrice}_${optionType}` : `${selectedIndex}_${strikePrice}_${optionType}`;
       }
 
       await api.post("/orders", payload);
@@ -85,7 +93,34 @@ export default function QuickOrderPanel({ watchlist = [] }) {
       setPrice("");
     } catch (e) {
       console.error("Order failed:", e);
-      toast.error(e.response?.data?.detail || "Order placement failed");
+      if (e.response?.data?.detail === "NO_EXECUTION_BROKER") {
+        if (window.confirm("The Execution broker is not connected. Would you like to place this order in Mock (Paper Trading) mode instead?")) {
+          try {
+            const payload = {
+              side,
+              qty: parseInt(quantity),
+              price: parseFloat(price),
+              force_mock: true,
+            };
+            if (instrumentType === "stock") {
+              payload.symbol = symbol;
+            } else if (instrumentType === "futures") {
+              payload.symbol = expiry ? `${selectedIndex}_${expiry}_FUT` : `${selectedIndex}_FUT`;
+            } else if (instrumentType === "option") {
+              payload.symbol = expiry ? `${selectedIndex}_${expiry}_${strikePrice}_${optionType}` : `${selectedIndex}_${strikePrice}_${optionType}`;
+            }
+            await api.post("/orders", payload);
+            toast.success("Mock Order placed successfully!");
+            setSymbol("");
+            setQuantity(1);
+            setPrice("");
+          } catch (mockError) {
+            toast.error(mockError.response?.data?.detail || "Mock order failed");
+          }
+        }
+      } else {
+        toast.error(e.response?.data?.detail || "Order placement failed");
+      }
     } finally {
       setLoading(false);
     }
@@ -174,6 +209,15 @@ export default function QuickOrderPanel({ watchlist = [] }) {
         </button>
       </div>
 
+      <label>Expiry (Optional)</label>
+      <input
+        type="text"
+        value={expiry}
+        onChange={(e) => setExpiry(e.target.value.toUpperCase())}
+        className="order-input"
+        placeholder="e.g., 25JUL"
+      />
+
       <label>Quantity *</label>
       <input
         type="number"
@@ -213,13 +257,13 @@ export default function QuickOrderPanel({ watchlist = [] }) {
       <label>Option Type *</label>
       <div className="side-buttons">
         <button
-          className={`side-btn ${optionType === "CE" ? "active" : ""}`}
+          className={`side-btn buy ${optionType === "CE" ? "active" : ""}`}
           onClick={() => setOptionType("CE")}
         >
           CALL
         </button>
         <button
-          className={`side-btn ${optionType === "PE" ? "active" : ""}`}
+          className={`side-btn sell ${optionType === "PE" ? "active" : ""}`}
           onClick={() => setOptionType("PE")}
         >
           PUT
@@ -251,6 +295,15 @@ export default function QuickOrderPanel({ watchlist = [] }) {
           SELL
         </button>
       </div>
+
+      <label>Expiry (Optional)</label>
+      <input
+        type="text"
+        value={expiry}
+        onChange={(e) => setExpiry(e.target.value.toUpperCase())}
+        className="order-input"
+        placeholder="e.g., 25JUL"
+      />
 
       <label>Quantity *</label>
       <input

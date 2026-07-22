@@ -162,4 +162,30 @@ def angel_token_map() -> Dict[str, str]:
 
 
 def breeze_token_map() -> Dict[str, str]:
-    return dict(BREEZE_TOKENS)
+    try:
+        from constants import ICICI_INDEX_MAP
+    except ImportError:
+        ICICI_INDEX_MAP = {}
+    m = dict(BREEZE_TOKENS)
+    for std, breeze in ICICI_INDEX_MAP.items():
+        m[breeze] = std
+    return m
+
+
+# ============================================================
+# Aliceblue — symbol token (str) → ticker (NSE cash)
+# Alice Blue uses the standard NSE exchange token IDs (same as Angel)
+# ============================================================
+ALICEBLUE_TOKENS: Dict[str, str] = ANGEL_TOKENS.copy()
+ALICEBLUE_TOKENS.update({
+    "26000": "NIFTY",
+    "26009": "BANKNIFTY",
+    "26037": "FINNIFTY",
+    "26074": "MIDCPNIFTY",
+    "1": "SENSEX",
+    "26013": "NIFTYNXT50"
+})
+
+def aliceblue_token_map() -> Dict[str, str]:
+    """Alice Blue websocket sends token as '2885'."""
+    return ALICEBLUE_TOKENS

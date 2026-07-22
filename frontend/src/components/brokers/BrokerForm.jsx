@@ -1,5 +1,5 @@
 /* eslint-disable */
-export default function BrokerForm({ schema, values, onChange, mockMode, onMockChange, onSave, extras }) {
+export default function BrokerForm({ schema, values, onChange, mockMode, onMockChange, accountType, onSave, extras }) {
   return (
     <div className="p-4 space-y-4">
       {schema.docs && (
@@ -37,10 +37,23 @@ export default function BrokerForm({ schema, values, onChange, mockMode, onMockC
           ))}
         </div>
       )}
-      <label className="flex items-center gap-2 text-xs mono">
-        <input type="checkbox" checked={mockMode} onChange={(e) => onMockChange(e.target.checked)} data-testid="broker-mock-toggle" />
-        <span className="dim uppercase tracking-widest">Mock mode — orders go to the paper broker (recommended until you've tested keys)</span>
-      </label>
+      <div className="space-y-2 p-3 bg-[#FCFAF8] border border-[#E8E0D5] rounded-md">
+        {accountType === "primary" ? (
+          <div className="text-sm">
+            <span className="font-semibold text-[var(--brand)]">Primary Account</span>
+            <p className="dim text-xs mt-1">This account will strictly be used to pull live market data and populate charts. Order execution is completely disabled for safety.</p>
+          </div>
+        ) : (
+          <div className="text-sm">
+            <span className="font-semibold text-[var(--brand)]">Secondary Account</span>
+            <p className="dim text-xs mt-1 mb-3">This account will strictly be used to execute your trades. Live data fetching is offloaded to the Primary account.</p>
+            <label className="flex items-center gap-2 text-xs mono p-2 border-l-2 border-[var(--brand)] bg-white rounded">
+              <input type="checkbox" checked={mockMode} onChange={(e) => onMockChange(e.target.checked)} />
+              <span className="uppercase tracking-widest">Mock mode (Orders go to internal paper broker)</span>
+            </label>
+          </div>
+        )}
+      </div>
       <div className="flex flex-wrap gap-2">
         <button className="btn btn-primary" onClick={onSave} data-testid="broker-save-btn">Save</button>
         {extras}

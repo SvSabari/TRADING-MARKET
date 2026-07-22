@@ -83,25 +83,25 @@ export default function Settings() {
   return (
     <div className="space-y-4" data-testid="settings-page">
       <div>
-        <h1 style={{ fontFamily: "Chivo", fontWeight: 900, fontSize: 28, letterSpacing: "-0.02em" }}>Settings.</h1>
+        <h1 style={{ fontFamily: "Outfit", fontWeight: 700, fontSize: 28, letterSpacing: "-0.01em" }}>Settings</h1>
         <p className="dim text-sm mt-1">Account, notifications & integrations.</p>
       </div>
       <Panel title="Account" kicker={user?.id}>
-        <div className="p-6 grid grid-cols-1 md:grid-cols-3 gap-px bg-[#222]">
-          <div className="bg-[#121212] p-4">
-            <div className="dim text-[10px] mono uppercase tracking-widest">Name</div>
-            <div className="mt-1 text-sm">{user?.name}</div>
+        <div className="p-6 flex flex-col md:flex-row gap-4">
+          <div className="flex-1 bg-[var(--surface)] border border-[var(--border)] rounded-xl p-4 shadow-sm hover:border-[var(--brand)] transition-colors duration-200">
+            <div className="dim text-[10px] mono uppercase tracking-widest mb-1">Name</div>
+            <div className="text-sm font-medium">{user?.name}</div>
           </div>
-          <div className="bg-[#121212] p-4">
-            <div className="dim text-[10px] mono uppercase tracking-widest">Email</div>
-            <div className="mt-1 text-sm mono">{user?.email}</div>
+          <div className="flex-1 bg-[var(--surface)] border border-[var(--border)] rounded-xl p-4 shadow-sm hover:border-[var(--brand)] transition-colors duration-200">
+            <div className="dim text-[10px] mono uppercase tracking-widest mb-1">Email</div>
+            <div className="text-sm mono font-medium">{user?.email}</div>
           </div>
-          <div className="bg-[#121212] p-4">
-            <div className="dim text-[10px] mono uppercase tracking-widest">Role</div>
-            <div className="mt-1 text-sm mono buy">{user?.role}</div>
+          <div className="flex-1 bg-[var(--surface)] border border-[var(--border)] rounded-xl p-4 shadow-sm hover:border-[var(--brand)] transition-colors duration-200">
+            <div className="dim text-[10px] mono uppercase tracking-widest mb-1">Role</div>
+            <div className="text-sm mono font-bold buy">{user?.role}</div>
           </div>
         </div>
-        <div className="p-6 border-t border-[#222]">
+        <div className="px-6 pb-6">
           <button className="btn btn-danger" onClick={logout} data-testid="settings-logout-btn">Sign out</button>
         </div>
       </Panel>
@@ -109,7 +109,7 @@ export default function Settings() {
       <Panel title="Telegram alerts" kicker={status.using_platform_bot ? "using platform bot" : status.configured ? "configured" : "not configured"}>
         <div className="p-4 space-y-3 text-xs">
           {status.platform_bot_available && (
-            <div className="bg-[#1A1A1A] border border-[#00E676] p-3 text-xs buy">
+            <div className="bg-gray-100 border border-[#00E676] p-3 text-xs buy">
               ✨ Platform bot available — you only need to paste your chat ID below. Skip the bot token field unless you want to use your own bot.
             </div>
           )}

@@ -3,10 +3,7 @@ import { useMemo } from "react";
 
 const TICK = { fill: "#555", fontSize: 10, fontFamily: "JetBrains Mono" };
 const X_TICK = { fill: "#555", fontSize: 9, fontFamily: "JetBrains Mono" };
-const TOOLTIP_STYLE = {
-  background: "#0A0A0A", border: "1px solid #222",
-  fontFamily: "JetBrains Mono", fontSize: 11,
-};
+const TOOLTIP_STYLE = { background: "var(--surface)", border: "1px solid var(--border)", fontFamily: "JetBrains Mono", fontSize: 11, color: "var(--text-primary)", borderRadius: 4, boxShadow: "var(--shadow-md)" };
 
 export default function LivePriceChart({ history }) {
   const formatter = useMemo(() => (t) => new Date(t).toLocaleTimeString("en-IN", { hour12: false }).slice(0, 5), []);

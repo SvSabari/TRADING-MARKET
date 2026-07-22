@@ -39,14 +39,14 @@ export default function SignalExplainModal({ signal, onClose }) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ background: "rgba(0,0,0,0.85)", backdropFilter: "blur(12px)" }}
+      className="fixed inset-0 z-[100] flex items-center justify-center p-4"
+      style={{ background: "rgba(255,255,255,0.85)", backdropFilter: "blur(12px)" }}
       data-testid="signal-explain-modal"
       onClick={onClose}
     >
       <div
-        className="panel max-w-lg w-full"
-        style={{ background: "#0F0F0F", border: "1px solid #222" }}
+        className="w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+        style={{ background: "#FFFFFF", border: "1px solid #E5E7EB" }}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="panel-h">
@@ -58,7 +58,7 @@ export default function SignalExplainModal({ signal, onClose }) {
           <button
             data-testid="signal-explain-close"
             onClick={onClose}
-            className="dim hover:text-white transition-colors"
+            className="dim hover:text-black transition-colors"
           >
             <X size={14} weight="bold" />
           </button>
@@ -75,24 +75,24 @@ export default function SignalExplainModal({ signal, onClose }) {
             <>
               <div>
                 <div className="dim text-[10px] mono uppercase tracking-widest mb-1">Reasoning</div>
-                <div data-testid="signal-explain-reasoning" className="leading-relaxed">
+                <div data-testid="signal-explain-reasoning" className="leading-relaxed text-gray-800">
                   {r.reasoning}
                 </div>
               </div>
-              <div className="grid grid-cols-3 gap-px bg-[#222]">
-                <div className="bg-[#121212] p-3">
-                  <div className="dim text-[10px] mono uppercase tracking-widest">Stop loss</div>
+              <div className="grid grid-cols-3 gap-px bg-gray-300">
+                <div className="bg-white p-3">
+                  <div className="dim text-[10px] uppercase tracking-widest mono">Stop loss</div>
                   <div className="mt-1 num text-base sell" data-testid="signal-explain-sl">
                     ₹{fmtNum(r.suggested_sl)}
                   </div>
                 </div>
-                <div className="bg-[#121212] p-3">
+                <div className="bg-white p-3">
                   <div className="dim text-[10px] mono uppercase tracking-widest">Target</div>
                   <div className="mt-1 num text-base buy" data-testid="signal-explain-tgt">
                     ₹{fmtNum(r.suggested_target)}
                   </div>
                 </div>
-                <div className="bg-[#121212] p-3">
+                <div className="bg-white p-3">
                   <div className="dim text-[10px] mono uppercase tracking-widest">R : R</div>
                   <div className="mt-1 num text-base">{fmtNum(r.risk_reward)}</div>
                 </div>

@@ -73,12 +73,12 @@ export default function Login() {
               ALGORITHMIC<br/>EXECUTION FOR<br/><span className="buy">RETAIL TRADERS.</span>
             </h1>
             <p className="dim mt-6 max-w-md" style={{ fontFamily: "IBM Plex Sans" }}>
-              TradingView webhook execution · Nifty 50 5-second volume capture to Parquet ·
+              TradingView webhook execution · All Symbols 5-second volume capture to Parquet ·
               Broker-agnostic order routing · Claude-powered trade explainer.
             </p>
             <div className="mt-8 grid grid-cols-3 gap-px bg-[#222] max-w-md">
               {[
-                ["50", "NIFTY UNIVERSE"],
+                ["56", "SYMBOLS"],
                 ["5s", "TICK CAPTURE"],
                 ["∞", "PARQUET ROWS"],
               ].map(([n, l]) => (

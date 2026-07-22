@@ -1,7 +1,7 @@
 .right-sidebar {
   width: 350px;
-  background: linear-gradient(180deg, #0f172a 0%, #1a1f2e 100%);
-  border-left: 1px solid #334155;
+  background: var(--surface);
+  border-left: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -10,8 +10,8 @@
 
 .sidebar-tabs {
   display: flex;
-  border-bottom: 1px solid #334155;
-  background: #0f172a;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
 }
 
 .tab-button {
@@ -19,7 +19,7 @@
   padding: 1rem;
   background: none;
   border: none;
-  color: #94a3b8;
+  color: var(--text-muted);
   font-weight: 500;
   font-size: 0.875rem;
   cursor: pointer;
@@ -32,11 +32,11 @@
 }
 
 .tab-button:hover {
-  color: #cbd5e1;
+  color: var(--text-primary);
 }
 
 .tab-button.active {
-  color: #3b82f6;
+  color: var(--text-primary);
   border-bottom-color: #3b82f6;
 }
 
@@ -64,10 +64,84 @@
 .watchlist-input {
   flex: 1;
   padding: 0.5rem 0.75rem;
-  background: rgba(15, 23, 42, 0.8);
-  border: 1px solid #334155;
+  background: var(--bg);
+  border: 1px solid var(--border);
   border-radius: 0.375rem;
-  color: #e2e8f0;
+  color: var(--text-primary);
+  font-size: 0.875rem;
+  transition: border-color 0.2s ease;
+}
+
+.right-sidebar {
+  width: 350px;
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.sidebar-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.tab-button {
+  flex: 1;
+  padding: 1rem;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-weight: 500;
+  font-size: 0.875rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s ease;
+}
+
+.tab-button:hover {
+  color: var(--text-primary);
+}
+
+.tab-button.active {
+  color: var(--text-primary);
+  border-bottom-color: #3b82f6;
+}
+
+.sidebar-content {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Watchlist Panel */
+.watchlist-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 1rem;
+}
+
+.watchlist-input-group {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.watchlist-input {
+  flex: 1;
+  padding: 0.5rem 0.75rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+  color: var(--text-primary);
   font-size: 0.875rem;
   transition: border-color 0.2s ease;
 }
@@ -79,7 +153,7 @@
 }
 
 .watchlist-input::placeholder {
-  color: #64748b;
+  color: var(--text-muted);
 }
 
 .add-button {
@@ -112,15 +186,15 @@
   align-items: center;
   justify-content: space-between;
   padding: 0.75rem;
-  background: rgba(30, 41, 59, 0.6);
-  border: 1px solid #334155;
+  background: var(--bg);
+  border: 1px solid var(--border);
   border-radius: 0.375rem;
   transition: all 0.2s ease;
 }
 
 .watchlist-item:hover {
-  background: rgba(30, 41, 59, 0.9);
-  border-color: #475569;
+  background: var(--surface-hover);
+  border-color: var(--border-focus);
 }
 
 .watchlist-symbol {
@@ -132,13 +206,13 @@
 
 .symbol-name {
   font-weight: 600;
-  color: #e2e8f0;
+  color: var(--text-primary);
   min-width: 70px;
   font-size: 0.875rem;
 }
 
 .symbol-price {
-  color: #cbd5e1;
+  color: var(--text-secondary);
   font-weight: 500;
   font-size: 0.8125rem;
 }
@@ -151,18 +225,18 @@
 }
 
 .symbol-change.positive {
-  color: #10b981;
+  color: var(--buy);
 }
 
 .symbol-change.negative {
-  color: #ef4444;
+  color: var(--sell);
 }
 
 .remove-button {
   padding: 0.25rem;
   background: none;
   border: none;
-  color: #64748b;
+  color: var(--text-muted);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -181,7 +255,7 @@
   justify-content: center;
   height: 100%;
   text-align: center;
-  color: #64748b;
+  color: var(--text-muted);
 }
 
 .empty-state p {
@@ -207,10 +281,10 @@
 }
 
 .watchlist-items::-webkit-scrollbar-thumb {
-  background: #475569;
+  background: var(--border);
   border-radius: 3px;
 }
 
 .watchlist-items::-webkit-scrollbar-thumb:hover {
-  background: #64748b;
+  background: var(--text-muted);
 }

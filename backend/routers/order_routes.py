@@ -47,14 +47,28 @@ async def _upsert_position(user_id: str, order: Order):
 @router.post("", response_model=Order, response_model_by_alias=False)
 async def place_order(body: OrderCreate, user: User = Depends(get_current_user)):
     from services.broker_router import route_order
+    
+    actual_broker = body.broker
+    if not body.force_mock:
+        exec_broker_doc = await db.broker_connections.find_one({
+            "user_id": user.id,
+            "is_order_exec": True,
+            "connected": True
+        })
+        if not exec_broker_doc:
+            raise HTTPException(status_code=400, detail="NO_EXECUTION_BROKER")
+        actual_broker = exec_broker_doc["broker"]
+    else:
+        actual_broker = "mock"
+
     fill = await route_order(
-        db, user.id, body.broker,
+        db, user.id, actual_broker,
         symbol=body.symbol, side=body.side, qty=body.qty, price=body.price,
         order_type=body.order_type, product=body.product,
     )
     order = Order(
         user_id=user.id,
-        broker=body.broker,
+        broker=actual_broker,
         symbol=body.symbol.upper(),
         side=body.side.upper(),
         qty=body.qty,

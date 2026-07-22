@@ -14,7 +14,7 @@ from typing import Dict, List, Optional
 
 import pandas as pd
 
-from constants import NIFTY_50
+from constants import ALL_SYMBOLS
 from services.market_data import tick_engine
 
 DEFAULT_PARQUET_DIR = Path(__file__).resolve().parents[2] / "data" / "parquet"
@@ -33,7 +33,7 @@ def _today_dir() -> Path:
 class ParquetCapture:
     def __init__(self) -> None:
         # buffers: symbol -> list of partial 5s bucket rows
-        self._buffer: Dict[str, List[dict]] = {s: [] for s in NIFTY_50}
+        self._buffer: Dict[str, List[dict]] = {s: [] for s in ALL_SYMBOLS}
         self._task: Optional[asyncio.Task] = None
         self.running = False
         self.last_flush: Optional[str] = None
@@ -57,7 +57,7 @@ class ParquetCapture:
             ts = datetime.now(timezone.utc)
             bucket_ts = ts.replace(microsecond=0).isoformat()
             rows: Dict[str, dict] = {}
-            for s in NIFTY_50:
+            for s in ALL_SYMBOLS:
                 # last BUCKET_SECONDS ticks of 1s tick history
                 hist = list(tick_engine.history.get(s, []))[-BUCKET_SECONDS:]
                 if not hist:

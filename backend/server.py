@@ -27,6 +27,9 @@ from services.parquet_capture import parquet_capture  # noqa: E402
 from services.strategy_scheduler import scheduler as strategy_scheduler  # noqa: E402
 from services.live_feed_manager import live_feed_manager  # noqa: E402
 from services.anomaly_sweep import anomaly_sweeper  # noqa: E402
+from services.options_sweeper import options_sweeper  # noqa: E402
+import asyncio
+from services.poi_snapshot import load_snapshot, snapshot_loop
 from services.idempotency import ensure_indexes as ensure_idem_indexes  # noqa: E402
 from db import db  # noqa: E402
 
@@ -35,6 +38,11 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger("algo-trading")
+
+# Suppress verbose breeze-connect logging
+logging.getLogger("APILogger").setLevel(logging.WARNING)
+logging.getLogger("breeze_connect").setLevel(logging.WARNING)
+logging.getLogger("WebsocketLogger").setLevel(logging.WARNING)
 
 
 @asynccontextmanager
@@ -45,6 +53,11 @@ async def lifespan(app: FastAPI):
     strategy_scheduler.start()
     live_feed_manager.start()
     anomaly_sweeper.start()
+    options_sweeper.start()
+    
+    # Snapshot system for POI
+    await load_snapshot()
+    asyncio.create_task(snapshot_loop())
     try:
         await ensure_idem_indexes()
     except Exception as e:
@@ -60,15 +73,23 @@ async def lifespan(app: FastAPI):
             logger.warning("ensure demo user failed: %s", e)
     else:
         logger.info("Demo user creation is disabled (DEMO_USER_ENABLED=false)")
+
     yield
+
+    logger.info("Shutting down background services...")
     tick_engine.stop()
     parquet_capture.stop()
     strategy_scheduler.stop()
-    live_feed_manager.stop()
     anomaly_sweeper.stop()
+    options_sweeper.stop()
 
 
 app = FastAPI(title="Algo Trading Platform", lifespan=lifespan)
+
+@app.get("/api/debug/prices")
+def debug_prices():
+    from services.market_data import tick_engine
+    return {"prices": tick_engine.prices}
 
 cors_origins = os.environ.get("CORS_ORIGINS", "*")
 allow_origins = [origin.strip() for origin in cors_origins.split(",") if origin.strip()]

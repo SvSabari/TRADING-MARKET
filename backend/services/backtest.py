@@ -111,7 +111,6 @@ def _signals_smart_money(df: pd.DataFrame, params: Dict) -> pd.Series:
 
 
 def _signals_gamma_scalping(df: pd.DataFrame, params: Dict) -> pd.Series:
-    # Toy proxy: mean-revert ATR-band breaks
     if len(df) < 14:
         return pd.Series([0] * len(df), index=df.index)
     tr = pd.concat([
@@ -122,8 +121,153 @@ def _signals_gamma_scalping(df: pd.DataFrame, params: Dict) -> pd.Series:
     atr = tr.rolling(14).mean()
     sma = df["close"].rolling(14).mean()
     sig = pd.Series(0, index=df.index)
-    sig[(df["close"] - sma) > 1.2 * atr] = -1   # fade up move
-    sig[(sma - df["close"]) > 1.2 * atr] = 1    # fade down move
+    sig[(df["close"] - sma) > 1.2 * atr] = -1
+    sig[(sma - df["close"]) > 1.2 * atr] = 1
+    return sig
+
+
+# ---- NEW CREATIVE STRATEGIES ----
+
+def _signals_supertrend(df: pd.DataFrame, params: Dict) -> pd.Series:
+    """Supertrend: Buy when price closes above supertrend line, Sell below."""
+    if len(df) < 14:
+        return pd.Series([0] * len(df), index=df.index)
+    period = int(params.get("period", 10))
+    multiplier = float(params.get("multiplier", 3.0))
+    tr = pd.concat([
+        df["high"] - df["low"],
+        (df["high"] - df["close"].shift(1)).abs(),
+        (df["low"] - df["close"].shift(1)).abs(),
+    ], axis=1).max(axis=1)
+    atr = tr.rolling(period).mean()
+    hl2 = (df["high"] + df["low"]) / 2
+    upper = hl2 + multiplier * atr
+    lower = hl2 - multiplier * atr
+    supertrend = pd.Series(0.0, index=df.index)
+    direction = pd.Series(1, index=df.index)  # 1=bullish, -1=bearish
+    for i in range(period, len(df)):
+        prev_upper = upper.iloc[i - 1]
+        prev_lower = lower.iloc[i - 1]
+        upper.iloc[i] = upper.iloc[i] if upper.iloc[i] < prev_upper or df["close"].iloc[i - 1] > prev_upper else prev_upper
+        lower.iloc[i] = lower.iloc[i] if lower.iloc[i] > prev_lower or df["close"].iloc[i - 1] < prev_lower else prev_lower
+        if direction.iloc[i - 1] == -1 and df["close"].iloc[i] > upper.iloc[i - 1]:
+            direction.iloc[i] = 1
+        elif direction.iloc[i - 1] == 1 and df["close"].iloc[i] < lower.iloc[i - 1]:
+            direction.iloc[i] = -1
+        else:
+            direction.iloc[i] = direction.iloc[i - 1]
+    sig = pd.Series(0, index=df.index)
+    cross_up = (direction.shift(1) == -1) & (direction == 1)
+    cross_dn = (direction.shift(1) == 1) & (direction == -1)
+    sig[cross_up] = 1
+    sig[cross_dn] = -1
+    return sig
+
+
+def _signals_rsi_divergence(df: pd.DataFrame, params: Dict) -> pd.Series:
+    """RSI strategy: Buy on oversold (<30), Sell on overbought (>70)."""
+    if len(df) < 15:
+        return pd.Series([0] * len(df), index=df.index)
+    period = int(params.get("period", 14))
+    oversold = float(params.get("oversold", 30))
+    overbought = float(params.get("overbought", 70))
+    delta = df["close"].diff()
+    gain = delta.clip(lower=0).rolling(period).mean()
+    loss = (-delta.clip(upper=0)).rolling(period).mean()
+    rs = gain / loss.replace(0, 1e-6)
+    rsi = 100 - (100 / (1 + rs))
+    sig = pd.Series(0, index=df.index)
+    sig[(rsi.shift(1) < oversold) & (rsi >= oversold)] = 1   # cross up from oversold
+    sig[(rsi.shift(1) > overbought) & (rsi <= overbought)] = -1  # cross down from overbought
+    return sig
+
+
+def _signals_macd_crossover(df: pd.DataFrame, params: Dict) -> pd.Series:
+    """MACD: Buy when MACD crosses above signal line, Sell when crosses below."""
+    if len(df) < 35:
+        return pd.Series([0] * len(df), index=df.index)
+    fast = int(params.get("fast", 12))
+    slow = int(params.get("slow", 26))
+    signal_p = int(params.get("signal", 9))
+    ema_fast = _ema(df["close"], fast)
+    ema_slow = _ema(df["close"], slow)
+    macd = ema_fast - ema_slow
+    signal_line = macd.ewm(span=signal_p, adjust=False).mean()
+    cross_up = (macd.shift(1) <= signal_line.shift(1)) & (macd > signal_line)
+    cross_dn = (macd.shift(1) >= signal_line.shift(1)) & (macd < signal_line)
+    sig = pd.Series(0, index=df.index)
+    sig[cross_up] = 1
+    sig[cross_dn] = -1
+    return sig
+
+
+def _signals_bollinger_band(df: pd.DataFrame, params: Dict) -> pd.Series:
+    """Bollinger Bands: Buy at lower band touch, Sell at upper band touch."""
+    if len(df) < 20:
+        return pd.Series([0] * len(df), index=df.index)
+    period = int(params.get("period", 20))
+    std_mult = float(params.get("std", 2.0))
+    sma = df["close"].rolling(period).mean()
+    std = df["close"].rolling(period).std()
+    upper = sma + std_mult * std
+    lower = sma - std_mult * std
+    sig = pd.Series(0, index=df.index)
+    sig[df["close"] <= lower] = 1   # buy at lower band
+    sig[df["close"] >= upper] = -1  # sell at upper band
+    return sig
+
+
+def _signals_opening_range_breakout(df: pd.DataFrame, params: Dict) -> pd.Series:
+    """ORB: Buy if price breaks above first N-bar high after open."""
+    if len(df) < 20:
+        return pd.Series([0] * len(df), index=df.index)
+    orb_bars = int(params.get("orb_bars", 15))  # first 15 minutes at 1min bars
+    sig = pd.Series(0, index=df.index)
+    # Group by date
+    if "ts" in df.columns:
+        df = df.copy()
+        df["date"] = pd.to_datetime(df["ts"]).dt.date
+        for date, grp in df.groupby("date"):
+            if len(grp) < orb_bars + 1:
+                continue
+            orb_high = grp["high"].iloc[:orb_bars].max()
+            orb_low = grp["low"].iloc[:orb_bars].min()
+            for idx in grp.index[orb_bars:]:
+                if df.loc[idx, "close"] > orb_high:
+                    sig.loc[idx] = 1
+                elif df.loc[idx, "close"] < orb_low:
+                    sig.loc[idx] = -1
+    return sig
+
+
+def _signals_volume_spike_breakout(df: pd.DataFrame, params: Dict) -> pd.Series:
+    """Volume Spike: Buy when volume is 3x average AND price makes new high."""
+    if len(df) < 20:
+        return pd.Series([0] * len(df), index=df.index)
+    vol_mult = float(params.get("vol_multiplier", 3.0))
+    lookback = int(params.get("lookback", 20))
+    avg_vol = df["volume"].rolling(lookback).mean()
+    high_n = df["high"].rolling(lookback).max()
+    low_n = df["low"].rolling(lookback).min()
+    vol_spike = df["volume"] >= vol_mult * avg_vol
+    sig = pd.Series(0, index=df.index)
+    sig[vol_spike & (df["close"] > high_n.shift(1))] = 1
+    sig[vol_spike & (df["close"] < low_n.shift(1))] = -1
+    return sig
+
+
+def _signals_gap_and_go(df: pd.DataFrame, params: Dict) -> pd.Series:
+    """Gap & Go: Buy stocks that gap up significantly from previous close."""
+    if len(df) < 2:
+        return pd.Series([0] * len(df), index=df.index)
+    gap_pct = float(params.get("gap_pct", 0.015))  # 1.5% gap
+    sig = pd.Series(0, index=df.index)
+    gap_up = (df["open"] - df["close"].shift(1)) / df["close"].shift(1)
+    gap_dn = (df["close"].shift(1) - df["open"]) / df["close"].shift(1)
+    # Buy the gap up if price continues higher in first bar
+    sig[(gap_up > gap_pct) & (df["close"] > df["open"])] = 1
+    # Sell the gap down if price continues lower
+    sig[(gap_dn > gap_pct) & (df["close"] < df["open"])] = -1
     return sig
 
 
@@ -133,6 +277,13 @@ _SIG_MAP = {
     "oi_breakout": _signals_oi_breakout,
     "smart_money": _signals_smart_money,
     "gamma_scalping": _signals_gamma_scalping,
+    "supertrend": _signals_supertrend,
+    "rsi_divergence": _signals_rsi_divergence,
+    "macd_crossover": _signals_macd_crossover,
+    "bollinger_band": _signals_bollinger_band,
+    "opening_range_breakout": _signals_opening_range_breakout,
+    "volume_spike_breakout": _signals_volume_spike_breakout,
+    "gap_and_go": _signals_gap_and_go,
 }
 
 
@@ -177,26 +328,33 @@ def _simulate(df: pd.DataFrame, signals: pd.Series) -> Dict:
     if df.empty or len(df) < 3:
         return {"metrics": {}, "equity_curve": [], "trades_log": []}
     state = SimState()
-    next_open = df["open"].shift(-1)
-    for i in range(len(df) - 1):
-        sig = int(signals.iloc[i])
-        bar_close = float(df["close"].iloc[i])
+    
+    # Pre-extract numpy arrays for fast iteration
+    sig_vals = signals.values
+    close_vals = df["close"].values
+    open_vals = df["open"].values
+    ts_vals = df["ts"].astype(str).values
+    
+    n = len(df)
+    for i in range(n - 1):
+        sig = int(sig_vals[i])
+        bar_close = float(close_vals[i])
         eq = _mark_to_market(state, bar_close)
         state.peak = max(state.peak, eq)
         state.max_dd = max(state.max_dd, (state.peak - eq) / state.peak if state.peak else 0)
-        state.curve.append({"t": int(i), "ts": str(df["ts"].iloc[i]),
+        state.curve.append({"t": int(i), "ts": ts_vals[i],
                              "equity": round(eq, 2), "price": bar_close})
         if sig == 0 or sig == state.position:
             continue
-        fill = float(next_open.iloc[i])
-        if pd.isna(fill):
+        fill = float(open_vals[i + 1])
+        if math.isnan(fill):
             continue
-        _close_position(state, fill, str(df["ts"].iloc[i + 1]))
+        _close_position(state, fill, ts_vals[i + 1])
         _open_position(state, sig, fill)
 
     # final close on last bar
-    last_close = float(df["close"].iloc[-1])
-    _close_position(state, last_close, str(df["ts"].iloc[-1]), final=True)
+    last_close = float(close_vals[-1])
+    _close_position(state, last_close, ts_vals[-1], final=True)
 
     rets = [c["equity"] for c in state.curve]
     pct_rets = [(rets[i] / rets[i - 1] - 1) for i in range(1, len(rets))] if len(rets) > 1 else [0]
@@ -214,64 +372,21 @@ def _simulate(df: pd.DataFrame, signals: pd.Series) -> Dict:
             "bars": len(df),
         },
         "equity_curve": state.curve[::max(1, len(state.curve) // 200)],
-        "trades_log": state.trades_log[-50:],
+        "trades_log": state.trades_log,
     }
 
 
-def _synthetic(strategy_kind: str, symbol: str, period_days: int, params: Dict) -> Dict:
-    rng = random.Random(hash((strategy_kind, symbol, period_days)) % (2 ** 32))
-    n = max(40, period_days * 50)
-    equity = 100000.0
-    curve = []
-    trades = 0
-    wins = 0
-    peak = equity
-    max_dd = 0.0
-    bias = {"ema_crossover": 0.0009, "oi_breakout": 0.0011, "vwap_scalping": 0.0006,
-            "gamma_scalping": 0.0007, "smart_money": 0.0013}.get(strategy_kind, 0.0005)
-    for i in range(n):
-        ret = rng.gauss(bias, 0.012)
-        equity *= 1 + ret
-        peak = max(peak, equity)
-        max_dd = max(max_dd, (peak - equity) / peak)
-        if ret > 0:
-            wins += 1
-        trades += 1
-        curve.append({"t": i, "ts": "", "equity": round(equity, 2), "price": 0.0})
-    pct_rets = [(curve[i]["equity"] / curve[i - 1]["equity"] - 1) for i in range(1, len(curve))]
-    mu = sum(pct_rets) / len(pct_rets)
-    sigma = math.sqrt(sum((r - mu) ** 2 for r in pct_rets) / len(pct_rets)) or 1e-6
-    return {
-        "metrics": {
-            "total_return_pct": round((equity / 100000.0 - 1) * 100, 2),
-            "final_equity": round(equity, 2),
-            "trades": trades,
-            "win_rate_pct": round(wins / trades * 100, 2),
-            "max_drawdown_pct": round(max_dd * 100, 2),
-            "sharpe": round(mu / sigma * math.sqrt(252), 2),
-            "bars": n,
-        },
-        "equity_curve": curve,
-        "trades_log": [],
-        "data_source": "synthetic",
-    }
 
 
 def run_backtest(strategy_kind: str, symbol: str, period_days: int, params: Dict | None = None) -> Dict:
     params = params or {}
     df = _load_symbol_data(symbol, period_days)
     if df.empty or len(df) < 50:
-        out = _synthetic(strategy_kind, symbol, period_days, params)
-        out["data_source"] = "synthetic"
-        out["reason"] = "no_parquet_data"
-        return out
+        return {"metrics": {}, "equity_curve": [], "trades_log": [], "data_source": "none", "reason": "no_parquet_data"}
     rule = params.get("resample", "1min")
     candles = _resample(df, rule)
     if len(candles) < 30:
-        out = _synthetic(strategy_kind, symbol, period_days, params)
-        out["data_source"] = "synthetic"
-        out["reason"] = "insufficient_candles"
-        return out
+        return {"metrics": {}, "equity_curve": [], "trades_log": [], "data_source": "none", "reason": "insufficient_candles"}
     sig_fn = _SIG_MAP.get(strategy_kind, _signals_ema_crossover)
     signals = sig_fn(candles, params)
     res = _simulate(candles, signals)

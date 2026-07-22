@@ -93,6 +93,7 @@ class OrderCreate(BaseModel):
     price: float
     order_type: str = "MARKET"
     product: str = "MIS"
+    force_mock: bool = False
 
 
 # ---------- Positions ----------
@@ -145,6 +146,8 @@ class BrokerConnection(BaseDocument):
     session_date: str = ""  # YYYY-MM-DD IST trading day
     credentials: Dict[str, Any] = Field(default_factory=dict)  # encrypted blob of extra fields
     connected: bool = False
+    is_data_feed: bool = False
+    is_order_exec: bool = False
     mock_mode: bool = True
     created_at: datetime = Field(default_factory=utc_now)
 
@@ -153,6 +156,8 @@ class BrokerConnectionPublic(BaseModel):
     id: str
     broker: str
     connected: bool
+    is_data_feed: bool
+    is_order_exec: bool
     mock_mode: bool
     has_keys: bool
     has_access_token: bool = False
@@ -164,6 +169,8 @@ class BrokerConnectionUpsert(BaseModel):
     broker: str
     api_key: str = ""
     api_secret: str = ""
+    is_data_feed: bool = False
+    is_order_exec: bool = False
     mock_mode: bool = True
     credentials: Dict[str, Any] = Field(default_factory=dict)
 
@@ -187,6 +194,7 @@ class BacktestRun(BaseDocument):
     period_days: int
     metrics: Dict[str, Any] = Field(default_factory=dict)
     equity_curve: List[Dict[str, Any]] = Field(default_factory=list)
+    trades_log: List[Dict[str, Any]] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=utc_now)
 
 

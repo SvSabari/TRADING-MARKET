@@ -14,10 +14,10 @@
 
 .order-type-btn {
   padding: 0.5rem 0.75rem;
-  background: rgba(30, 41, 59, 0.6);
-  border: 1px solid #334155;
+  background: var(--bg);
+  border: 1px solid var(--border);
   border-radius: 0.375rem;
-  color: #94a3b8;
+  color: var(--text-secondary);
   font-weight: 500;
   font-size: 0.75rem;
   cursor: pointer;
@@ -25,8 +25,8 @@
 }
 
 .order-type-btn:hover {
-  border-color: #475569;
-  color: #cbd5e1;
+  border-color: var(--border-focus);
+  color: var(--text-primary);
 }
 
 .order-type-btn.active {
@@ -50,7 +50,7 @@
 }
 
 .order-form-group label {
-  color: #cbd5e1;
+  color: var(--text-secondary);
   font-weight: 500;
   font-size: 0.8125rem;
   display: block;
@@ -58,10 +58,10 @@
 
 .order-input {
   padding: 0.5rem;
-  background: rgba(15, 23, 42, 0.8);
-  border: 1px solid #334155;
+  background: var(--bg);
+  border: 1px solid var(--border);
   border-radius: 0.375rem;
-  color: #e2e8f0;
+  color: var(--text-primary);
   font-size: 0.875rem;
   transition: border-color 0.2s ease;
 }
@@ -73,7 +73,7 @@
 }
 
 .order-input::placeholder {
-  color: #64748b;
+  color: var(--text-muted);
 }
 
 .side-buttons {
@@ -84,10 +84,10 @@
 
 .side-btn {
   padding: 0.5rem;
-  background: rgba(30, 41, 59, 0.6);
-  border: 1px solid #334155;
+  background: var(--bg);
+  border: 1px solid var(--border);
   border-radius: 0.375rem;
-  color: #cbd5e1;
+  color: var(--text-secondary);
   font-weight: 600;
   font-size: 0.8125rem;
   cursor: pointer;
@@ -95,18 +95,19 @@
 }
 
 .side-btn:hover {
-  border-color: #475569;
+  border-color: var(--border-focus);
+  color: var(--text-primary);
 }
 
 .side-btn.buy.active {
-  background: #10b981;
-  border-color: #10b981;
+  background: var(--buy);
+  border-color: var(--buy);
   color: white;
 }
 
 .side-btn.sell.active {
-  background: #ef4444;
-  border-color: #ef4444;
+  background: var(--sell);
+  border-color: var(--sell);
   color: white;
 }
 
@@ -118,10 +119,10 @@
 
 .index-btn {
   padding: 0.5rem;
-  background: rgba(30, 41, 59, 0.6);
-  border: 1px solid #334155;
+  background: var(--bg);
+  border: 1px solid var(--border);
   border-radius: 0.375rem;
-  color: #cbd5e1;
+  color: var(--text-secondary);
   font-weight: 500;
   font-size: 0.8125rem;
   cursor: pointer;
@@ -129,7 +130,8 @@
 }
 
 .index-btn:hover {
-  border-color: #475569;
+  border-color: var(--border-focus);
+  color: var(--text-primary);
 }
 
 .index-btn.active {
@@ -175,10 +177,10 @@
 }
 
 .order-form::-webkit-scrollbar-thumb {
-  background: #475569;
+  background: var(--border);
   border-radius: 3px;
 }
 
 .order-form::-webkit-scrollbar-thumb:hover {
-  background: #64748b;
+  background: var(--border);
 }

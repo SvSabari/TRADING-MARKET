@@ -14,13 +14,21 @@ router = APIRouter(prefix="/strategies", tags=["strategies"])
 async def kinds(user: User = Depends(get_current_user)):
     return {
         "kinds": [
-            {"id": "ema_crossover", "name": "EMA Crossover", "description": "Classic 9/21 EMA crossover."},
-            {"id": "oi_breakout", "name": "OI Breakout", "description": "Open Interest unwind/breakout detector."},
-            {"id": "vwap_scalping", "name": "VWAP Scalping", "description": "Mean-reversion around session VWAP."},
-            {"id": "gamma_scalping", "name": "Gamma Scalping", "description": "Delta-hedge around ATM options."},
-            {"id": "smart_money", "name": "Smart Money", "description": "Volume + OI confluence with delta footprint."},
+            {"id": "ema_crossover",          "name": "EMA Crossover",            "description": "Catches new trends early. Buys when the fast moving average crosses above the slow one.", "params_hint": "fast=9, slow=21", "category": "trend"},
+            {"id": "macd_crossover",         "name": "MACD Crossover",           "description": "Momentum strategy. Buys when MACD line crosses above the signal line — a classic confirmation of upward momentum.", "params_hint": "fast=12, slow=26, signal=9", "category": "trend"},
+            {"id": "supertrend",             "name": "Supertrend",               "description": "Uses ATR-based dynamic support/resistance. Buys when price closes above the Supertrend line, sells when it crosses below.", "params_hint": "period=10, multiplier=3.0", "category": "trend"},
+            {"id": "rsi_divergence",         "name": "RSI Reversal",             "description": "Mean-reversion strategy. Buys when RSI exits oversold territory (<30), sells when it exits overbought (>70).", "params_hint": "period=14, oversold=30, overbought=70", "category": "reversal"},
+            {"id": "bollinger_band",         "name": "Bollinger Band Bounce",    "description": "Buys at the lower Bollinger Band (statistical support) and sells at the upper band (statistical resistance).", "params_hint": "period=20, std=2.0", "category": "reversal"},
+            {"id": "vwap_scalping",          "name": "VWAP Scalping",            "description": "Buys dips below the daily average price (VWAP) and sells the bounce. Ideal for intraday trading.", "params_hint": "entry_z=0.002, exit_z=0.002", "category": "scalping"},
+            {"id": "opening_range_breakout", "name": "Opening Range Breakout",   "description": "Buys if price breaks above the first 15-minute high. One of the most popular intraday strategies in Indian markets.", "params_hint": "orb_bars=15", "category": "breakout"},
+            {"id": "volume_spike_breakout",  "name": "Volume Spike Breakout",    "description": "Buys when volume is 3x the average AND price makes a new high. Confirms strong institutional buying interest.", "params_hint": "vol_multiplier=3.0, lookback=20", "category": "breakout"},
+            {"id": "oi_breakout",            "name": "OI Breakout",              "description": "Spots massive price spikes when option sellers get trapped and forced to cover positions.", "params_hint": "window=20", "category": "breakout"},
+            {"id": "gap_and_go",             "name": "Gap & Go",                 "description": "Buys stocks that gap up 1.5%+ at market open and continue higher. Capitalises on news-driven momentum.", "params_hint": "gap_pct=0.015", "category": "momentum"},
+            {"id": "smart_money",            "name": "Smart Money Flow",         "description": "Follows huge volume spikes with directional price moves — a proxy for institutional whale activity.", "params_hint": "None", "category": "momentum"},
+            {"id": "gamma_scalping",         "name": "Gamma Scalping",           "description": "Profits from wild price swings by fading extreme moves beyond ATR bands without guessing direction.", "params_hint": "None", "category": "scalping"},
         ]
     }
+
 
 
 @router.get("/scheduler-status")

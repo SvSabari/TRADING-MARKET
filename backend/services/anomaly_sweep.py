@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from db import db
-from constants import NIFTY_50
+from constants import ALL_SYMBOLS
 from models import Notification
 from services.ai_engine import analyse_window
 from services.market_data import tick_engine
@@ -61,7 +61,7 @@ class AnomalySweeper:
         if not user_id:
             return
         loop_now = asyncio.get_event_loop().time()
-        candidates = [s for s in NIFTY_50
+        candidates = [s for s in ALL_SYMBOLS
                       if loop_now - self._symbol_cooldown.get(s, 0) > COOLDOWN_PER_SYMBOL]
         if not candidates:
             return

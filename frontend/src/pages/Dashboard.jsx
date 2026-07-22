@@ -39,7 +39,7 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-4" data-testid="dashboard-page">
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-px bg-[#222]">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <StatTile label="Total P&L" value={fmtRupee(pnl?.total_pnl || 0)}
           accent={(pnl?.total_pnl || 0) >= 0 ? "buy" : "sell"} big testid="pnl-total" />
         <StatTile label="Unrealized" value={fmtRupee(pnl?.unrealized_pnl || 0)}
@@ -54,10 +54,18 @@ export default function Dashboard() {
           title={`Live · ${chartSym}`}
           kicker={history.length ? `${history.length} ticks` : "loading"}
           right={
-            <select className="terminal !w-auto !py-1 !text-xs" value={chartSym}
-              onChange={(e) => setChartSym(e.target.value)} data-testid="chart-symbol-select">
-              {ticks.map((t) => (<option key={t.symbol} value={t.symbol}>{t.symbol}</option>))}
-            </select>
+            <div className="flex gap-2">
+              <select className="terminal !w-auto !py-1 !text-xs" value={["NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY", "SENSEX", "NIFTYNXT50"].includes(chartSym) ? "" : chartSym}
+                onChange={(e) => setChartSym(e.target.value)} data-testid="chart-symbol-select">
+                <option disabled value="">── Equities ──</option>
+                {ticks.filter(t => !["NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY", "SENSEX", "NIFTYNXT50"].includes(t.symbol)).map((t) => (<option key={t.symbol} value={t.symbol}>{t.symbol}</option>))}
+              </select>
+              <select className="terminal !w-auto !py-1 !text-xs" value={["NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY", "SENSEX", "NIFTYNXT50"].includes(chartSym) ? chartSym : ""}
+                onChange={(e) => setChartSym(e.target.value)} data-testid="chart-index-select">
+                <option disabled value="">── Indices ──</option>
+                {["NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY", "SENSEX", "NIFTYNXT50"].map((sym) => (<option key={sym} value={sym}>{sym}</option>))}
+              </select>
+            </div>
           }
           className="lg:col-span-2"
         >
@@ -67,8 +75,8 @@ export default function Dashboard() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <MoversTable rows={gainers} title="Top gainers" kicker="nifty 50" accent="buy" testid="gainer" />
-        <MoversTable rows={losers} title="Top losers" kicker="nifty 50" accent="sell" testid="loser" />
+        <MoversTable rows={gainers} title="Top gainers" kicker="all symbols" accent="buy" testid="gainer" />
+        <MoversTable rows={losers} title="Top losers" kicker="all symbols" accent="sell" testid="loser" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">

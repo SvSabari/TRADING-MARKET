@@ -49,7 +49,7 @@ export default function TradingView() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Panel title="Your webhook URL" kicker={info?.per_user_secret ? "POST · JSON · per-user secret" : "POST · JSON"}>
           <div className="p-4 space-y-3">
-            <div className="mono text-xs break-all bg-black p-3 border border-[#222]" data-testid="webhook-url">{fullUrl}</div>
+            <div className="mono text-xs break-all bg-gray-100 p-3 border border-gray-200 text-gray-700" data-testid="webhook-url">{fullUrl}</div>
             <div className="flex gap-2">
               <button className="btn" data-testid="copy-webhook-btn" onClick={() => { navigator.clipboard.writeText(fullUrl); toast.success("Copied"); }}>
                 <Copy size={14} weight="bold" /> Copy URL
@@ -60,9 +60,9 @@ export default function TradingView() {
                 load();
               }}>Rotate secret</button>
             </div>
-            <div className="dim text-[10px] mono uppercase tracking-widest mt-4">example payload</div>
-            <pre className="bg-black p-3 border border-[#222] text-xs overflow-x-auto" data-testid="example-payload">{examplePayload}</pre>
-            <div className="dim text-xs mt-2">
+            <div className="text-gray-500 text-[10px] mono uppercase tracking-widest mt-4">example payload</div>
+            <pre className="bg-gray-100 p-3 border border-gray-200 text-xs overflow-x-auto text-gray-700" data-testid="example-payload">{examplePayload}</pre>
+            <div className="text-gray-500 text-xs mt-2">
               In TradingView → Create Alert → Notifications → Webhook URL → paste the URL above. In the Message field paste the JSON.
               The <span className="mono">alert_id</span> field makes duplicate fires idempotent.
             </div>
@@ -72,29 +72,29 @@ export default function TradingView() {
         <Panel title="Test fire" kicker="simulate alert">
           <div className="p-4 grid grid-cols-2 gap-3">
             <div>
-              <label className="block dim text-[10px] mono uppercase tracking-widest mb-1">Symbol</label>
+              <label className="block text-gray-500 text-[10px] mono uppercase tracking-widest mb-1">Symbol</label>
               <input className="terminal" data-testid="tv-test-symbol" value={form.symbol} onChange={(e) => setForm({ ...form, symbol: e.target.value.toUpperCase() })} />
             </div>
             <div>
-              <label className="block dim text-[10px] mono uppercase tracking-widest mb-1">Side</label>
+              <label className="block text-gray-500 text-[10px] mono uppercase tracking-widest mb-1">Side</label>
               <select className="terminal" data-testid="tv-test-side" value={form.side} onChange={(e) => setForm({ ...form, side: e.target.value })}>
                 <option>BUY</option><option>SELL</option>
               </select>
             </div>
             <div>
-              <label className="block dim text-[10px] mono uppercase tracking-widest mb-1">Price</label>
+              <label className="block text-gray-500 text-[10px] mono uppercase tracking-widest mb-1">Price</label>
               <input className="terminal" type="number" step="0.01" data-testid="tv-test-price" value={form.price} onChange={(e) => setForm({ ...form, price: parseFloat(e.target.value) })} />
             </div>
             <div>
-              <label className="block dim text-[10px] mono uppercase tracking-widest mb-1">Qty</label>
+              <label className="block text-gray-500 text-[10px] mono uppercase tracking-widest mb-1">Qty</label>
               <input className="terminal" type="number" data-testid="tv-test-qty" value={form.qty} onChange={(e) => setForm({ ...form, qty: parseInt(e.target.value) })} />
             </div>
             <div className="col-span-2">
-              <label className="block dim text-[10px] mono uppercase tracking-widest mb-1">Strategy</label>
+              <label className="block text-gray-500 text-[10px] mono uppercase tracking-widest mb-1">Strategy</label>
               <input className="terminal" data-testid="tv-test-strategy" value={form.strategy} onChange={(e) => setForm({ ...form, strategy: e.target.value })} />
             </div>
             <div className="col-span-2">
-              <label className="block dim text-[10px] mono uppercase tracking-widest mb-1">Alert ID (idempotency key — re-firing the same ID won&apos;t double-execute)</label>
+              <label className="block text-gray-500 text-[10px] mono uppercase tracking-widest mb-1">Alert ID (idempotency key — re-firing the same ID won&apos;t double-execute)</label>
               <input className="terminal" data-testid="tv-test-alert-id" value={form.alert_id} placeholder="auto-generated if empty" onChange={(e) => setForm({ ...form, alert_id: e.target.value })} />
             </div>
             <button className="btn btn-primary col-span-2 justify-center" data-testid="tv-test-fire-btn" onClick={fire}>
@@ -106,7 +106,7 @@ export default function TradingView() {
 
       <Panel title="Signal history" kicker={`${signals.length} alerts`}>
         <table className="w-full text-xs">
-          <thead><tr className="dim text-[10px] uppercase tracking-widest border-b border-[#222]">
+          <thead><tr className="text-gray-500 text-[10px] uppercase tracking-widest border-b border-gray-200">
             <th className="text-left py-2 px-4">Received</th>
             <th className="text-left py-2 px-4">Symbol</th>
             <th className="text-left py-2 px-4">Side</th>
@@ -118,7 +118,7 @@ export default function TradingView() {
           <tbody className="cell-divider">
             {signals.map((s) => (
               <tr key={s.id} data-testid={`tv-signal-${s.id}`}>
-                <td className="py-2 px-4 mono dim">{fmtDateTime(s.received_at)}</td>
+                <td className="py-2 px-4 mono text-gray-500">{fmtDateTime(s.received_at)}</td>
                 <td className="py-2 px-4 mono">{s.symbol}</td>
                 <td className={`py-2 px-4 mono ${s.side === "BUY" ? "buy" : "sell"}`}>{s.side}</td>
                 <td className="py-2 px-4 text-right num">{fmtNum(s.price)}</td>

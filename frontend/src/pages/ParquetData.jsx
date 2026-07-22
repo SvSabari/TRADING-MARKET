@@ -55,10 +55,12 @@ export default function ParquetData() {
       <div className="flex items-center justify-between">
         <div>
           <h1 style={{ fontFamily: "Chivo", fontWeight: 900, fontSize: 28, letterSpacing: "-0.02em" }}>Parquet capture.</h1>
-          <p className="dim text-sm mt-1">5-second OHLCV buckets per Nifty 50 symbol, written to a date-partitioned folder.</p>
+          <p className="dim text-sm mt-1">5-second OHLCV buckets per symbol, written to a date-partitioned folder.</p>
         </div>
         <div className="flex items-center gap-2">
-          {stats?.running ? (
+          {stats === null ? (
+            <button className="btn btn-ghost dim" disabled>Loading...</button>
+          ) : stats.running ? (
             <button className="btn btn-danger" onClick={() => toggle(false)} data-testid="parquet-stop-btn"><Stop size={14} weight="bold" /> Stop</button>
           ) : (
             <button className="btn btn-primary" onClick={() => toggle(true)} data-testid="parquet-start-btn"><Play size={14} weight="bold" /> Start</button>
@@ -66,11 +68,11 @@ export default function ParquetData() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-px bg-[#222]">
-        <StatTile label="Status" value={stats?.running ? "RUNNING" : "STOPPED"} accent={stats?.running ? "buy" : "sell"} testid="parquet-status" big />
-        <StatTile label="Rows written" value={fmtInt(stats?.rows_written || 0)} testid="parquet-rows-total" />
-        <StatTile label="Files on disk" value={fmtInt(files.length)} testid="parquet-files-count" />
-        <StatTile label="Total size" value={fmtBytes(totalBytes)} testid="parquet-total-size" />
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <StatTile label="Status" value={stats === null ? "..." : (stats.running ? "RUNNING" : "STOPPED")} accent={stats === null ? "" : (stats.running ? "buy" : "sell")} testid="parquet-status" big />
+        <StatTile label="Rows written" value={stats === null ? "-" : fmtInt(stats.rows_written || 0)} testid="parquet-rows-total" />
+        <StatTile label="Files on disk" value={stats === null ? "-" : fmtInt(files.length)} testid="parquet-files-count" />
+        <StatTile label="Total size" value={stats === null ? "-" : fmtBytes(totalBytes)} testid="parquet-total-size" />
       </div>
 
       {preview && (

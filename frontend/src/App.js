@@ -10,6 +10,7 @@ import Signals from "@/pages/Signals";
 import TradingView from "@/pages/TradingView";
 import Strategies from "@/pages/Strategies";
 import OptionChain from "@/pages/OptionChain";
+import PremiumMatcherPage from "@/pages/PremiumMatcherPage";
 import Positions from "@/pages/Positions";
 import Orders from "@/pages/Orders";
 import Backtest from "@/pages/Backtest";
@@ -33,6 +34,7 @@ export default function App() {
           <Route path="/tradingview" element={wrap(TradingView)} />
           <Route path="/strategies" element={wrap(Strategies)} />
           <Route path="/option-chain" element={wrap(OptionChain)} />
+          <Route path="/premium-matcher" element={wrap(PremiumMatcherPage)} />
           <Route path="/positions" element={wrap(Positions)} />
           <Route path="/orders" element={wrap(Orders)} />
           <Route path="/backtest" element={wrap(Backtest)} />

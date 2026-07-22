@@ -31,40 +31,104 @@ class BreezeFeed(LiveFeed):
     def _on_ticks(self, ticks: dict | list):
         if not ticks:
             return
-            
-        # The breeze on_ticks can sometimes return a list of ticks or a single dict
+
+        import json, os
+        dump_file = "d:/TRADING-TERMINAL-main/backend/breeze_tick_dump.txt"
+        if not hasattr(self, "_dumped_ticks"):
+            self._dumped_ticks = 0
+        if self._dumped_ticks < 5:
+            try:
+                with open(dump_file, "a") as f:
+                    f.write(json.dumps(ticks) + "\n")
+                self._dumped_ticks += 1
+            except Exception:
+                pass
+
+        to_emit = []
         if isinstance(ticks, list):
             for t in ticks:
-                self._process_single_tick(t)
+                parsed = self._parse_tick(t)
+                if parsed: to_emit.append(parsed)
         elif isinstance(ticks, dict):
-            self._process_single_tick(ticks)
+            parsed = self._parse_tick(ticks)
+            if parsed: to_emit.append(parsed)
+            
+        if to_emit and self._loop:
+            self._loop.call_soon_threadsafe(self._emit_many, to_emit)
 
-    def _process_single_tick(self, t: dict):
+    def _parse_tick(self, t: dict) -> tuple | None:
         stock_code = t.get("stock_code") or t.get("symbol")
         if not stock_code:
-            return
+            return None
             
-        # First check reverse map (for '4.1!2885' style tokens), fallback to direct map (for 'RELIANCE')
         sym = getattr(self, "_reverse_map", {}).get(stock_code) or self.symbol_map.get(stock_code)
         if not sym:
-            return
+            return None
             
         ltp = float(t.get("last") or t.get("ltp") or t.get("close") or 0)
-        if not ltp:
-            return
-            
+        
         cum_vol = int(t.get("totalQtyTraded") or t.get("volume") or 0)
         prev = self._last_cum_volume.get(sym, cum_vol)
         delta = max(0, cum_vol - prev)
         self._last_cum_volume[sym] = cum_vol
         
-        # bridge into asyncio
-        if self._loop:
-            self._loop.call_soon_threadsafe(self._emit, sym, ltp, delta, t)
+        return (sym, ltp, delta, t)
+
+    def _emit_many(self, batch: list):
+        for args in batch:
+            self._emit(*args)
+
+    def _do_subscribe_all(self):
+        # WORKAROUND for ICICI SDK bug: get_stock_token_value expects self.interval to exist
+        self._breeze.interval = ""
+        for breeze_sym, std_sym in list(self.symbol_map.items()):
+            if "|" in breeze_sym:
+                continue
+
+            is_option = "!" in breeze_sym
+            exchange = "BSE" if breeze_sym == "BSESEN" else "NSE"
+            if is_option:
+                exchange = "NFO"
+                
+            product = "options" if is_option else "cash"
+
+            if not is_option:
+                try:
+                    exch_token, _ = self._breeze.get_stock_token_value(
+                        exchange_code=exchange, stock_code=breeze_sym, product_type=product,
+                        get_exchange_quotes=True, get_market_depth=False
+                    )
+                    if exch_token:
+                        self._reverse_map[exch_token] = std_sym
+                except Exception:
+                    pass
+            else:
+                self._reverse_map[breeze_sym] = std_sym
+
+            kwargs = {
+                "exchange_code": exchange,
+                "product_type": product,
+                "get_exchange_quotes": True,
+                "get_market_depth": False
+            }
+            if is_option:
+                kwargs["stock_token"] = breeze_sym
+                # For options, ICICI SDK subscribe_feeds requires stock_code to be something, even 'NIFTY', or it can just use stock_token
+                # But to be safe we pass stock_token
+            else:
+                kwargs["stock_code"] = breeze_sym
+
+            try:
+                self._breeze.subscribe_feeds(**kwargs)
+            except Exception as e:
+                logger.debug("breeze sub error: %s", e)
 
     async def connect(self) -> None:
         try:
             from breeze_connect import BreezeConnect
+            import logging
+            logging.getLogger("APILogger").propagate = False
+            logging.getLogger("WebsocketLogger").propagate = False
         except ImportError as e:
             self.last_error = f"breeze_connect is not installed: {e}"
             logger.warning(self.last_error)
@@ -75,7 +139,11 @@ class BreezeFeed(LiveFeed):
         self._reverse_map = {}
         
         try:
-            self._breeze.generate_session(api_secret=self._secret_key, session_token=self._session_token)
+            await asyncio.to_thread(
+                self._breeze.generate_session,
+                api_secret=self._secret_key,
+                session_token=self._session_token
+            )
         except Exception as e:
             self.last_error = f"Failed to generate breeze session: {e}"
             logger.warning(self.last_error)
@@ -86,36 +154,14 @@ class BreezeFeed(LiveFeed):
         
         try:
             # Connect the websocket (starts its own thread usually)
-            self._breeze.ws_connect()
+            await asyncio.to_thread(self._breeze.ws_connect)
             self.connected = True
-            logger.info("Breeze websocket connected")
+            logger.info("Breeze websocket connected, beginning subscriptions...")
             
-            # Subscribe to all tokens
-            # self.symbol_map keys are ICICI proprietary symbols e.g. "RELIND"
-            # values are standard tickers e.g. "RELIANCE"
+            # Subscribe to all tokens in a single background thread to avoid spamming threadpool
+            await asyncio.to_thread(self._do_subscribe_all)
             
-            # WORKAROUND for ICICI SDK bug: get_stock_token_value expects self.interval to exist
-            self._breeze.interval = ""
-            
-            for breeze_sym, std_sym in self.symbol_map.items():
-                try:
-                    # Get the exact token string ICICI will return for this stock
-                    exch_token, _ = self._breeze.get_stock_token_value(
-                        exchange_code="NSE", stock_code=breeze_sym, product_type="cash",
-                        get_exchange_quotes=True, get_market_depth=False
-                    )
-                    if exch_token:
-                        self._reverse_map[exch_token] = std_sym
-                except Exception:
-                    pass
-
-                self._breeze.subscribe_feeds(
-                    exchange_code="NSE",
-                    stock_code=breeze_sym,
-                    product_type="cash",
-                    get_exchange_quotes=True,
-                    get_market_depth=False
-                )
+            logger.info("Breeze subscriptions complete. Waiting for stop event.")
             logger.info(f"Breeze ticker subscribed to {len(self.symbol_map)} tokens")
             
             # Park the coroutine until stop is requested

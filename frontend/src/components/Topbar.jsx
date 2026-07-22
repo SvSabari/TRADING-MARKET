@@ -39,12 +39,12 @@ export default function Topbar() {
   }, []);
 
   return (
-    <div className="flex-1 flex items-center gap-6 overflow-hidden" data-testid="topbar">
+    <div className="flex-1 flex items-center gap-6 min-w-0" data-testid="topbar">
       <div className="flex items-center gap-2 shrink-0">
         <span className="dot dot-live"></span>
         <span className="mono text-xs dim uppercase tracking-widest">live · {new Date().toLocaleDateString("en-IN")}</span>
       </div>
-      <div className="ticker-row flex-1" data-testid="ticker-row">
+      <div className="ticker-row flex-1 overflow-hidden" data-testid="ticker-row">
         {ticks.map((t) => {
           const prevPx = prevPrices[t.symbol];
           const flash = prevPx ? (t.ltp > prevPx ? "flash-up" : t.ltp < prevPx ? "flash-dn" : "") : "";
@@ -58,15 +58,15 @@ export default function Topbar() {
           );
         })}
       </div>
-      <Link to="/notifications" data-testid="notifications-btn" className="btn-ghost btn relative">
+      <Link to="/notifications" data-testid="notifications-btn" className="btn-ghost btn relative shrink-0">
         <Bell size={14} weight="bold" />
         {unread > 0 && (
-          <span className="absolute -top-1 -right-1 bg-[#FF3B30] text-black mono text-[10px] px-1" data-testid="notif-unread-count">
+          <span className="absolute -top-1.5 -right-1.5 bg-[#FF3B30] text-white font-bold text-[9px] min-w-[16px] h-[16px] flex items-center justify-center rounded-full px-1 shadow-sm" data-testid="notif-unread-count">
             {unread}
           </span>
         )}
       </Link>
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 shrink-0">
         <User size={14} weight="bold" />
         <span className="mono text-xs" data-testid="topbar-user-email">{user?.email}</span>
         <button className="btn btn-ghost" onClick={logout} data-testid="logout-btn">

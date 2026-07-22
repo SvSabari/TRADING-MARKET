@@ -29,6 +29,8 @@ async def _process_signal(user_id: str, sig: TVSignal, broker_name: str = "mock"
         filled_at=datetime.now(timezone.utc),
     )
     await db.orders.insert_one(order.to_mongo())
+    from routers.order_routes import _upsert_position
+    await _upsert_position(user_id, order)
     await db.tv_signals.update_one({"_id": sig.id},
                                    {"$set": {"processed": True, "order_id": order.id}})
     n = Notification(

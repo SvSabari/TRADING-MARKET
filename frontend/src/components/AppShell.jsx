@@ -32,8 +32,8 @@ export default function AppShell({ children }) {
       <main className="app-main" data-testid="app-main">{children}</main>
       <aside className="app-right-sidebar"><RightSidebar /></aside>
       <footer className="app-status"><StatusBar /></footer>
-      <Toaster theme="dark" position="bottom-right" toastOptions={{
-        style: { background: "#121212", border: "1px solid #222", color: "#EDEDED", borderRadius: "2px", fontFamily: "JetBrains Mono, monospace", fontSize: "12px" },
+      <Toaster theme="light" position="bottom-right" toastOptions={{
+        style: { background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text-primary)", borderRadius: "2px", fontFamily: "JetBrains Mono, monospace", fontSize: "12px" },
       }} />
     </div>
   );

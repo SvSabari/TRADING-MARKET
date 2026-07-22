@@ -47,7 +47,8 @@ def _signal_for_strategy(strat: Strategy) -> tuple[str | None, str | None, float
         elif diff < -0.002:
             side = "SELL"
     elif kind == "oi_breakout":
-        if diff > 0.0035:
+        # Fire BUY when price is above average, or with small random chance to keep it active
+        if diff > 0.001 or (diff > -0.001 and random.random() < 0.3):
             side = "BUY"
     elif kind == "vwap_scalping":
         if diff < -0.0025:

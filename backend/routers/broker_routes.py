@@ -28,6 +28,8 @@ def _to_public(b: BrokerConnection) -> BrokerConnectionPublic:
     creds = b.credentials or {}
     return BrokerConnectionPublic(
         id=b.id, broker=b.broker, connected=b.connected,
+        is_data_feed=b.is_data_feed,
+        is_order_exec=b.is_order_exec,
         mock_mode=b.mock_mode,
         has_keys=bool(b.api_key) or any(creds.values()),
         has_access_token=bool(b.access_token),
@@ -70,6 +72,20 @@ async def upsert(body: BrokerConnectionUpsert, user: User = Depends(get_current_
     api_key_enc = merged_creds.get("api_key", "")
     api_secret_enc = merged_creds.get("api_secret", "")
     connected = bool(api_key_enc or any(merged_creds.values())) or body.mock_mode
+    
+    # Enforce exclusivity: if this broker is set to be the data feed, un-set all others
+    if body.is_data_feed:
+        await db.broker_connections.update_many(
+            {"user_id": user.id, "broker": {"$ne": body.broker}},
+            {"$set": {"is_data_feed": False}}
+        )
+    # Same for order execution
+    if body.is_order_exec:
+        await db.broker_connections.update_many(
+            {"user_id": user.id, "broker": {"$ne": body.broker}},
+            {"$set": {"is_order_exec": False}}
+        )
+
     if existing:
         await db.broker_connections.update_one(
             {"_id": existing["_id"]},
@@ -77,25 +93,64 @@ async def upsert(body: BrokerConnectionUpsert, user: User = Depends(get_current_
                 "api_key": api_key_enc,
                 "api_secret": api_secret_enc,
                 "credentials": merged_creds,
+                "is_data_feed": body.is_data_feed,
+                "is_order_exec": body.is_order_exec,
                 "mock_mode": body.mock_mode,
                 "connected": connected,
             }},
         )
+        from services.live_feed_manager import live_feed_manager
+        await live_feed_manager.force_reconnect()
         d = await db.broker_connections.find_one({"_id": existing["_id"]})
         return _to_public(BrokerConnection.from_mongo(d)).model_dump()
     conn = BrokerConnection(
         user_id=user.id, broker=body.broker,
         api_key=api_key_enc, api_secret=api_secret_enc,
         credentials=merged_creds,
+        is_data_feed=body.is_data_feed,
+        is_order_exec=body.is_order_exec,
         mock_mode=body.mock_mode, connected=connected,
     )
     await db.broker_connections.insert_one(conn.to_mongo())
+    from services.live_feed_manager import live_feed_manager
+    await live_feed_manager.force_reconnect()
     return _to_public(conn).model_dump()
 
 
 @router.delete("/{broker}")
 async def disconnect(broker: str, user: User = Depends(get_current_user)):
-    res = await db.broker_connections.delete_one({"user_id": user.id, "broker": broker})
+    doc = await db.broker_connections.find_one({"user_id": user.id, "broker": broker})
+    if not doc:
+        return {"deleted": 0}
+        
+    was_primary = doc.get("is_data_feed", False)
+    was_secondary = doc.get("is_order_exec", False)
+    
+    res = await db.broker_connections.delete_one({"_id": doc["_id"]})
+    
+    # Auto-fallback for primary: pick a connected broker that is NOT the secondary and NOT mock
+    if was_primary:
+        fallback = await db.broker_connections.find_one({
+            "user_id": user.id, 
+            "connected": True, 
+            "broker": {"$ne": "mock"},
+            "is_order_exec": {"$ne": True}
+        })
+        if fallback:
+            await db.broker_connections.update_one({"_id": fallback["_id"]}, {"$set": {"is_data_feed": True}})
+            
+    # Auto-fallback for secondary: pick a connected broker that is NOT the primary
+    if was_secondary:
+        fallback = await db.broker_connections.find_one({
+            "user_id": user.id, 
+            "connected": True, 
+            "is_data_feed": {"$ne": True}
+        })
+        if fallback:
+            await db.broker_connections.update_one({"_id": fallback["_id"]}, {"$set": {"is_order_exec": True}})
+            
+    from services.live_feed_manager import live_feed_manager
+    await live_feed_manager.force_reconnect()
     return {"deleted": res.deleted_count}
 
 
@@ -263,3 +318,100 @@ async def upstox_callback(code: str = Query(...), state: str = Query("")):
                   "session_date": today, "mock_mode": False, "connected": True}},
     )
     return RedirectResponse(url=f"{APP_BASE_URL}/brokers?upstox=connected", status_code=302)
+
+
+# ---- Alice Blue OAuth ----
+
+@router.get("/aliceblue/login-url")
+async def aliceblue_login_url(user: User = Depends(get_current_user)):
+    doc = await db.broker_connections.find_one({"user_id": user.id, "broker": "aliceblue"})
+    if not doc:
+        raise HTTPException(status_code=400, detail="Save your Alice Blue credentials first.")
+    creds = doc.get("credentials") or {}
+    api_key = decrypt_str(creds.get("api_key", ""))
+    if not api_key:
+        raise HTTPException(status_code=400, detail="Alice Blue API key (App Code) missing.")
+    url = f"https://ant.aliceblueonline.com/?appcode={api_key}"
+    return {"login_url": url,
+            "note": "Login with your Alice Blue credentials, then you will be redirected back."}
+
+
+@router.get("/aliceblue/callback")
+async def aliceblue_callback(authCode: str = Query(...), userId: str = Query(...)):
+    import httpx
+    import hashlib
+    # Find the user's connection by userId (since state is not passed in the URL by Aliceblue)
+    # We will search across all connections to find one matching this userId.
+    doc = None
+    async for conn in db.broker_connections.find({"broker": "aliceblue"}):
+        creds = conn.get("credentials") or {}
+        if decrypt_str(creds.get("user_id", "")) == userId:
+            doc = conn
+            break
+    
+    if not doc:
+        raise HTTPException(status_code=404, detail="No Alice Blue connection record found for this userId.")
+        
+    creds = doc.get("credentials") or {}
+    api_secret = decrypt_str(creds.get("api_secret", ""))
+    
+    # Checksum: userId + authCode + apiSecret
+    raw_str = f"{userId.strip()}{authCode.strip()}{api_secret.strip()}"
+    checksum = hashlib.sha256(raw_str.encode('utf-8')).hexdigest()
+    
+    async with httpx.AsyncClient(timeout=15) as client:
+        resp = await client.post(
+            "https://a3.aliceblueonline.com/open-api/od/v1/vendor/getUserDetails",
+            json={"checkSum": checksum}
+        )
+        if resp.status_code != 200:
+            raise HTTPException(status_code=400, detail=f"Alice Blue token exchange failed: {resp.text[:200]}")
+        data = resp.json()
+        
+    if data.get("stat") != "Ok":
+        raise HTTPException(status_code=400, detail=f"Alice Blue error: {data.get('emsg', 'Unknown')}")
+        
+    userSession = data.get("userSession") or data.get("sessionID")
+    if not userSession:
+        raise HTTPException(status_code=400, detail=f"Alice Blue returned no userSession. Raw data: {data}")
+        
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    await db.broker_connections.update_one(
+        {"_id": doc["_id"]},
+        {"$set": {"access_token": encrypt_str(userSession),
+                  "session_date": today, "mock_mode": False, "connected": True}},
+    )
+    return RedirectResponse(url=f"{APP_BASE_URL}/brokers?aliceblue=connected", status_code=302)
+@router.post("/aliceblue/login")
+async def aliceblue_login_programmatic(user: User = Depends(get_current_user)):
+    """Trigger Alice Blue programmatic login bypassing the web redirect."""
+    doc = await db.broker_connections.find_one({"user_id": user.id, "broker": "aliceblue"})
+    if not doc:
+        raise HTTPException(status_code=400, detail="Save your Alice Blue credentials first.")
+    
+    creds = doc.get("credentials") or {}
+    api_key = decrypt_str(creds.get("api_key", ""))
+    client_code = decrypt_str(creds.get("user_id", ""))
+    
+    if not api_key or not client_code:
+        raise HTTPException(status_code=400, detail="Alice Blue API key or Client ID missing.")
+    
+    try:
+        from pya3 import Aliceblue
+        alice = Aliceblue(user_id=client_code, api_key=api_key)
+        res = alice.get_session_id()
+        if res.get('stat') != 'Ok':
+            raise Exception(res.get('emsg', 'Unknown error'))
+        session_id = res['sessionID']
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Alice Blue programmatic login failed: {e}")
+
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    await db.broker_connections.update_one(
+        {"_id": doc["_id"]},
+        {"$set": {"access_token": encrypt_str(session_id),
+                  "session_date": today, "mock_mode": False, "connected": True}},
+    )
+    from services.live_feed_manager import live_feed_manager
+    await live_feed_manager.force_reconnect()
+    return {"ok": True, "session_date": today}

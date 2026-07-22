@@ -7,7 +7,7 @@ import { Brain } from "@phosphor-icons/react";
 
 const KIND_COLOR = {
   long_buildup: "buy", short_buildup: "sell",
-  breakout: "buy", reversal: "sell",
+  breakout: "buy", breakdown: "sell",
   bull_trap: "warn", bear_trap: "warn",
 };
 

@@ -24,6 +24,8 @@ INDEX_CONFIG = {
     "BANKNIFTY": {"spot": "NSE:NIFTY BANK", "prefix": "NFO:BANKNIFTY", "step": 100},
     "FINNIFTY": {"spot": "NSE:NIFTY FIN SERVICE", "prefix": "NFO:FINNIFTY", "step": 50},
     "MIDCPNIFTY": {"spot": "NSE:NIFTY MID SELECT", "prefix": "NFO:MIDCPNIFTY", "step": 25},
+    "SENSEX": {"spot": "BSE:SENSEX", "prefix": "BFO:SENSEX", "step": 100},
+    "BANKEX": {"spot": "BSE:BANKEX", "prefix": "BFO:BANKEX", "step": 100},
 }
 
 
@@ -44,7 +46,7 @@ def _synth_spot(symbol: str) -> float:
     return round(avg * 10.5, 2)
 
 
-def build_synthetic_chain(spot: float | None = None, symbol: str = "NIFTY") -> Dict:
+def build_synthetic_chain(spot: float | None = None, symbol: str = "NIFTY", expiry: str = None) -> Dict:
     if spot is None:
         spot = _synth_spot(symbol)
     step = INDEX_CONFIG.get(symbol, INDEX_CONFIG["NIFTY"])["step"]
@@ -52,6 +54,14 @@ def build_synthetic_chain(spot: float | None = None, symbol: str = "NIFTY") -> D
     strikes = [atm + (i - STRIKE_RANGE) * step for i in range(STRIKE_RANGE * 2 + 1)]
     rng = random.Random(int(spot) % 9999)
     rows = []
+    
+    def get_trend(coi, cltp):
+        if coi > 0 and cltp > 0: return "Long Buildup"
+        if coi > 0 and cltp < 0: return "Short Buildup"
+        if coi < 0 and cltp < 0: return "Long Unwinding"
+        if coi < 0 and cltp > 0: return "Short Covering"
+        return "Neutral"
+        
     for k in strikes:
         diff = (k - spot) / spot
         ce_iv = 12 + abs(diff) * 60 + rng.uniform(-1.5, 1.5)
@@ -60,14 +70,29 @@ def build_synthetic_chain(spot: float | None = None, symbol: str = "NIFTY") -> D
         pe_oi = max(1000, int(900000 * math.exp(-((k - atm) ** 2) / (2 * (step * 5) ** 2)) + rng.randint(-50000, 50000)))
         ce_ltp = max(0.5, spot - k + rng.uniform(20, 80)) if k < spot else max(0.5, rng.uniform(5, 60))
         pe_ltp = max(0.5, k - spot + rng.uniform(20, 80)) if k > spot else max(0.5, rng.uniform(5, 60))
+        
+        ce_change_oi = rng.randint(-50000, 50000)
+        pe_change_oi = rng.randint(-50000, 50000)
+        ce_change_ltp = rng.uniform(-5.0, 5.0)
+        pe_change_ltp = rng.uniform(-5.0, 5.0)
+        
         rows.append({
             "strike": k,
             "ce_oi": ce_oi, "ce_iv": round(ce_iv, 2), "ce_ltp": round(ce_ltp, 2),
-            "ce_change_oi": rng.randint(-50000, 50000),
+            "ce_change_oi": ce_change_oi, "ce_change_ltp": round(ce_change_ltp, 2),
+            "ce_trend": get_trend(ce_change_oi, ce_change_ltp),
             "pe_oi": pe_oi, "pe_iv": round(pe_iv, 2), "pe_ltp": round(pe_ltp, 2),
-            "pe_change_oi": rng.randint(-50000, 50000),
+            "pe_change_oi": pe_change_oi, "pe_change_ltp": round(pe_change_ltp, 2),
+            "pe_trend": get_trend(pe_change_oi, pe_change_ltp),
         })
-    return {"spot": spot, "atm": atm, "rows": rows, "source": "synthetic"}
+    return {
+        "spot": spot,
+        "atm": atm,
+        "rows": rows,
+        "source": "synthetic",
+        "expiry": expiry or datetime.now(timezone.utc).strftime("%d %b").upper(),
+        "available_expiries": [expiry] if expiry else [datetime.now(timezone.utc).strftime("%d %b").upper()]
+    }
 
 
 def _nearest_weekly_expiry_date() -> datetime:
@@ -160,19 +185,71 @@ def build_kite_chain(kite: KiteService, symbol: str) -> Optional[Dict]:
     return {"spot": spot, "atm": atm, "rows": rows, "source": "kite-live", "expiry": expiry_code}
 
 
-async def build_option_chain(db=None, user_id: str | None = None, symbol: str = "NIFTY") -> Dict:
+async def build_option_chain(db=None, user_id: str | None = None, symbol: str = "NIFTY", expiry: str = None) -> Dict:
+    
+    from services.market_data import tick_engine
+    
     if db is not None and user_id:
-        from services.kite_client import get_user_kite_service
-        kite = await get_user_kite_service(db, user_id)
-        if kite is not None:
-            live = build_kite_chain(kite, symbol)
-            if live is not None:
-                _compute_iv_and_greeks(live["rows"], live["spot"])
-                return live
-    chain = build_synthetic_chain(symbol=symbol)
-    # For synthetic chain, derive IV/Greeks too so the UI is honest about the math
-    _compute_iv_and_greeks(chain["rows"], chain["spot"])
-    return chain
+        from services.live_feed_manager import live_feed_manager
+        
+        active_broker = None
+        if live_feed_manager._active:
+            active_broker = getattr(live_feed_manager._active, "name", None) or live_feed_manager._active_broker
+            
+        if not active_broker:
+            # Fallback to database
+            conn = await db.broker_connections.find_one({"user_id": user_id, "is_data_feed": True, "connected": True})
+            if conn:
+                active_broker = conn.get("broker")
+        
+        if active_broker == "zerodha":
+            from zerodha_chain import build_zerodha_chain
+            from services.brokers.zerodha_client import get_user_zerodha_client
+            kite = await get_user_zerodha_client(db, user_id)
+            if kite is not None:
+                live = await build_zerodha_chain(kite, symbol, expiry)
+                if live is not None:
+                    _compute_iv_and_greeks(live["rows"], live["spot"])
+                    return live
+                    
+        elif active_broker == "aliceblue":
+            from services.brokers.aliceblue_client import get_user_aliceblue_client
+            from aliceblue_chain import build_aliceblue_chain
+            alice = await get_user_aliceblue_client(db, user_id)
+            if alice is not None:
+                live = await build_aliceblue_chain(alice, symbol, expiry)
+                if live is not None:
+                    _compute_iv_and_greeks(live["rows"], live["spot"])
+                    return live
+                    
+        elif active_broker == "breeze":
+            from breeze_chain import build_breeze_chain
+            from services.brokers.breeze_client import get_user_breeze_client
+            breeze = await get_user_breeze_client(db, user_id)
+            if breeze is not None:
+                live = await build_breeze_chain(breeze, symbol, expiry)
+                if live is not None:
+                    _compute_iv_and_greeks(live["rows"], live["spot"])
+                    return live
+            else:
+                return {
+                    "spot": 0.0,
+                    "atm": 0,
+                    "rows": [],
+                    "source": "BREEZE_SESSION_EXPIRED",
+                    "expiry": expiry or datetime.now(timezone.utc).strftime("%d %b").upper(),
+                    "available_expiries": []
+                }
+                
+    # STRICT REQUIREMENT: No fake data. If all broker connections fail, return an empty real-time structure.
+    return {
+        "spot": 0.0,
+        "atm": 0,
+        "rows": [],
+        "source": "NO_BROKER_DATA",
+        "expiry": expiry or datetime.now(timezone.utc).strftime("%d %b").upper(),
+        "available_expiries": []
+    }
 
 
 def pcr(chain: Dict) -> float:
@@ -182,7 +259,8 @@ def pcr(chain: Dict) -> float:
 
 
 def max_pain(chain: Dict) -> int:
-    strikes = [r["strike"] for r in chain["rows"]]
+    strikes = [r["strike"] for r in chain.get("rows", [])]
+    if not strikes: return 0
     best_strike = strikes[0]
     best_pain = float("inf")
     for k in strikes:

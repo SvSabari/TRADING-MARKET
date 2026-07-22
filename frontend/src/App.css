@@ -11,12 +11,12 @@
     height: 100vh;
     overflow: hidden;
 }
-.app-sidebar { grid-area: sidebar; border-right: 1px solid rgb(34 34 34); background: rgb(10 10 10); overflow-y: auto; }
-.app-topbar  { grid-area: topbar; border-bottom: 1px solid rgb(34 34 34); background: rgb(10 10 10); display:flex; align-items:center; padding: 0 16px; gap: 16px; }
+.app-sidebar { grid-area: sidebar; border-right: 1px solid var(--border); background: var(--bg); overflow-y: auto; }
+.app-topbar  { grid-area: topbar; border-bottom: 1px solid var(--border); background: var(--bg); display:flex; align-items:center; padding: 0 16px; gap: 16px; }
 .app-ticker  { grid-area: ticker; overflow: hidden; }
 .app-main    { grid-area: main; overflow-y: auto; padding: 16px; }
 .app-right-sidebar { grid-area: right-sidebar; overflow: hidden; }
-.app-status  { grid-area: statusbar; border-top: 1px solid rgb(34 34 34); background: rgb(10 10 10); display:flex; align-items:center; padding: 0 16px; gap: 16px; font-family: "JetBrains Mono", monospace; font-size: 11px; color: #888; }
+.app-status  { grid-area: statusbar; border-top: 1px solid var(--border); background: var(--bg); display:flex; align-items:center; padding: 0 16px; gap: 16px; font-family: "JetBrains Mono", monospace; font-size: 11px; color: var(--text-muted); }
 
 .sidebar-link {
     display: flex; align-items: center; gap: 10px;
@@ -31,10 +31,28 @@
     cursor: pointer;
     transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
 }
-.sidebar-link:hover { background: rgb(18 18 18); color: rgb(237 237 237); }
-.sidebar-link.active { background: rgb(18 18 18); color: rgb(237 237 237); border-left-color: #00E676; }
+.sidebar-link:hover { background: var(--surface-hover); color: var(--text-primary); }
+.sidebar-link.active { 
+    background: #EBE4DB; 
+    color: #000000; 
+    border-left-color: var(--brand); 
+    font-weight: 700;
+}
 
-.ticker-row { display:flex; gap: 24px; overflow:hidden; white-space:nowrap; }
+.ticker-row { 
+  display: flex; 
+  gap: 24px; 
+  overflow-x: auto; 
+  overflow-y: hidden;
+  white-space: nowrap;
+  padding-right: 3%;
+  mask-image: linear-gradient(to right, black 90%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to right, black 90%, transparent 100%);
+  scrollbar-width: none;
+}
+.ticker-row::-webkit-scrollbar {
+  display: none;
+}
 .ticker-item { display:inline-flex; gap: 6px; font-family: "JetBrains Mono", monospace; font-size: 12px; }
 
 @media (max-width: 1200px) {
@@ -60,6 +78,6 @@
             "main"
             "statusbar";
     }
-    .app-sidebar { border-right: none; border-bottom: 1px solid rgb(34 34 34); max-height: 220px; }
+    .app-sidebar { border-right: none; border-bottom: 1px solid var(--border); max-height: 220px; }
     .app-right-sidebar { display: none; }
 }
