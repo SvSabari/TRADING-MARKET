@@ -22,3 +22,6 @@ backend/ab_creds.json
 # Node
 frontend/node_modules/
 frontend/build/
+
+# Node runtime
+nodejs/
