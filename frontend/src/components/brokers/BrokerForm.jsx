@@ -1,4 +1,4 @@
-/* eslint-disable */
+﻿/* eslint-disable */
 export default function BrokerForm({ schema, values, onChange, mockMode, onMockChange, accountType, onSave, extras }) {
   return (
     <div className="p-4 space-y-4">
@@ -10,11 +10,11 @@ export default function BrokerForm({ schema, values, onChange, mockMode, onMockC
       {schema.redirect_required && (
         <div className="text-xs warn">
           Redirect-based OAuth. Set the Redirect URL in your broker portal to:&nbsp;
-          <span className="mono">{window.location.origin}/api/brokers/{schema.id}/callback</span>
+          <span className="mono">{process.env.REACT_APP_BACKEND_URL}/api/brokers/{schema.id}/callback</span>
         </div>
       )}
       {(schema.fields || []).length === 0 ? (
-        <div className="dim text-xs">This broker needs no credentials — it's the in-app paper broker.</div>
+        <div className="dim text-xs">This broker needs no credentials â€” it's the in-app paper broker.</div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {schema.fields.map((f) => (
