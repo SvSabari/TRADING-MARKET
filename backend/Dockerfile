@@ -4,6 +4,8 @@ FROM python:3.10-slim
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
+ENV USE_IN_MEMORY_DB=true
+ENV JWT_SECRET=MySecretPassword123
 
 # Set work directory
 WORKDIR /app
