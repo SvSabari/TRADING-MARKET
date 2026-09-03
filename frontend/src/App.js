@@ -1,7 +1,8 @@
-import "@/App.css";
+﻿import "@/App.css";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/lib/auth-context";
 import AppShell from "@/components/AppShell";
+import { Toaster } from "sonner";
 
 import Login from "@/pages/Login";
 import Register from "@/pages/Register";
@@ -30,16 +31,17 @@ const wrap = (Page) => <AppShell><Page /></AppShell>;
 export default function App() {
   return (
     <AuthProvider>
+      <Toaster theme="light" position="bottom-right" />
       <BrowserRouter>
         <Routes>
           {/* Public */}
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
 
-          {/* Managed User — standalone page (no trader shell) */}
+          {/* Managed User â€” standalone page (no trader shell) */}
           <Route path="/user-dashboard" element={<UserDashboard />} />
 
-          {/* Trader pages — wrapped in full AppShell */}
+          {/* Trader pages â€” wrapped in full AppShell */}
           <Route path="/" element={wrap(Dashboard)} />
           <Route path="/signals" element={wrap(Signals)} />
           <Route path="/tradingview" element={wrap(TradingView)} />
