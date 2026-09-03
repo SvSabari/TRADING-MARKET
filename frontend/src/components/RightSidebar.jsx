@@ -1,31 +1,26 @@
 import { useState, useEffect } from "react";
 import { Plus, X, ChartLine } from "@phosphor-icons/react";
+import { useLocation } from "react-router-dom";
 import { api } from "@/lib/api";
 import "./RightSidebar.css";
 import QuickOrderPanel from "./QuickOrderPanel";
+import MarketInsights from "./MarketInsights";
 
 export default function RightSidebar() {
-  const [activeTab, setActiveTab] = useState("watchlist");
-  const [watchlist, setWatchlist] = useState([]);
-  const [watchlistInput, setWatchlistInput] = useState("");
-  const [prices, setPrices] = useState({});
+  const location = useLocation();
+  const isDashboardOrChart = location.pathname === "/" || location.pathname === "/dashboard" || location.pathname.startsWith("/chart");
+  
+  const [activeTab, setActiveTab] = useState(isDashboardOrChart ? "signals" : "order");
 
-  // Load watchlist from localStorage
+  // Ensure active tab switches to order if we navigate away from signals-supported pages
   useEffect(() => {
-    const saved = localStorage.getItem("watchlist");
-    if (saved) {
-      try {
-        setWatchlist(JSON.parse(saved));
-      } catch (e) {
-        console.error("Failed to load watchlist:", e);
-      }
+    if (!isDashboardOrChart && activeTab === "signals") {
+      setActiveTab("order");
     }
-  }, []);
-
-  // Save watchlist to localStorage
-  useEffect(() => {
-    localStorage.setItem("watchlist", JSON.stringify(watchlist));
-  }, [watchlist]);
+  }, [isDashboardOrChart, activeTab]);
+  const [watchlist, setWatchlist] = useState(["RELIANCE"]); // Keep for quick order panel compatibility
+  const [prices, setPrices] = useState({});
+  const [watchlistInput, setWatchlistInput] = useState("");
 
   // Fetch prices for watchlist items
   useEffect(() => {
@@ -64,13 +59,15 @@ export default function RightSidebar() {
   return (
     <div className="right-sidebar">
       <div className="sidebar-tabs">
-        <button
-          className={`tab-button ${activeTab === "watchlist" ? "active" : ""}`}
-          onClick={() => setActiveTab("watchlist")}
-        >
-          <ChartLine size={18} />
-          <span>Watchlist</span>
-        </button>
+        {isDashboardOrChart && (
+          <button
+            className={`tab-button ${activeTab === "signals" ? "active" : ""}`}
+            onClick={() => setActiveTab("signals")}
+          >
+            <ChartLine size={18} />
+            <span>Signals</span>
+          </button>
+        )}
         <button
           className={`tab-button ${activeTab === "order" ? "active" : ""}`}
           onClick={() => setActiveTab("order")}
@@ -81,66 +78,9 @@ export default function RightSidebar() {
       </div>
 
       <div className="sidebar-content">
-        {activeTab === "watchlist" && (
-          <div className="watchlist-panel">
-            <div className="watchlist-input-group">
-              <input
-                type="text"
-                placeholder="Add symbol (e.g., RELIANCE)"
-                value={watchlistInput}
-                onChange={(e) => setWatchlistInput(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && addToWatchlist()}
-                className="watchlist-input"
-                list="available-symbols"
-              />
-              <datalist id="available-symbols">
-                {Object.keys(prices).map((sym) => (
-                  <option key={sym} value={sym} />
-                ))}
-              </datalist>
-              <button onClick={addToWatchlist} className="add-button">
-                <Plus size={16} />
-              </button>
-            </div>
-
-            <div className="watchlist-items">
-              {watchlist.length === 0 ? (
-                <div className="empty-state">
-                  <p>No symbols added</p>
-                  <p className="text-xs">Add symbols to your watchlist</p>
-                </div>
-              ) : (
-                watchlist.map((symbol) => {
-                  const tick = prices[symbol];
-                  return (
-                    <div key={symbol} className="watchlist-item">
-                      <div className="watchlist-symbol">
-                        <div className="symbol-name">{symbol}</div>
-                        {tick && (
-                          <>
-                            <div className="symbol-price">₹{tick.ltp.toFixed(2)}</div>
-                            <div
-                              className={`symbol-change ${
-                                tick.change_pct >= 0 ? "positive" : "negative"
-                              }`}
-                            >
-                              {tick.change_pct >= 0 ? "+" : ""}
-                              {tick.change_pct.toFixed(2)}%
-                            </div>
-                          </>
-                        )}
-                      </div>
-                      <button
-                        onClick={() => removeFromWatchlist(symbol)}
-                        className="remove-button"
-                      >
-                        <X size={16} />
-                      </button>
-                    </div>
-                  );
-                })
-              )}
-            </div>
+        {isDashboardOrChart && activeTab === "signals" && (
+          <div className="flex-1 overflow-hidden h-full">
+            <MarketInsights />
           </div>
         )}
 

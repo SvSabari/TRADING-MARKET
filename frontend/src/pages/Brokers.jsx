@@ -15,9 +15,7 @@ export default function Brokers() {
   const schema = { id: selected, ...(schemas[selected] || { fields: [] }) };
 
   const handleSave = async () => {
-    const isDataFeed = accountType === "primary";
-    const isOrderExec = accountType === "secondary";
-    await save(selected, values, mockMode, schema.name, isDataFeed, isOrderExec);
+    await save(selected, values, mockMode, schema.name, null, null);
     setValues({});
   };
 

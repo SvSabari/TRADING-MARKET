@@ -78,6 +78,9 @@ async def place_order(body: OrderCreate, user: User = Depends(get_current_user))
         status=fill["status"],
         source="manual",
         filled_at=datetime.now(timezone.utc),
+        target=body.target,
+        stop_loss=body.stop_loss,
+        is_bracket=body.target is not None or body.stop_loss is not None,
     )
     await db.orders.insert_one(order.to_mongo())
     await _upsert_position(user.id, order)
@@ -100,6 +103,11 @@ async def place_order(body: OrderCreate, user: User = Depends(get_current_user))
         f"× {order.qty} @ ₹{order.price} via {order.broker}",
         data={"kind": "order", "order_id": order.id},
     )
+    # Mirror order to all eligible managed users (fire-and-forget)
+    if body.copy_to_users:
+        import asyncio
+        from services.managed_order_engine import mirror_order_to_managed_users
+        asyncio.create_task(mirror_order_to_managed_users(db, user.id, order))
     return order
 
 

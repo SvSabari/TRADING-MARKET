@@ -6,12 +6,15 @@ import Panel from "@/components/Panel";
 import StatTile from "@/components/StatTile";
 import { OIHeatmapChart, MACDChart } from "@/components/charts/OptionChainCharts";
 import ChainTable, { GreeksGrid } from "@/components/options/ChainTable";
+import StrategyBuilderPanel from "@/components/StrategyBuilderPanel";
 
 export default function OptionChain() {
   const [symbol, setSymbol] = useState("NIFTY");
   const [expiry, setExpiry] = useState("");
   const [equities, setEquities] = useState([]);
   const [indices, setIndices] = useState(["NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY", "SENSEX", "NIFTYNXT50"]);
+  const [strategyMode, setStrategyMode] = useState(false);
+  const [strategyLegs, setStrategyLegs] = useState([]);
 
   useEffect(() => {
     api.get("/market/symbols").then(({ data }) => {
@@ -48,7 +51,7 @@ export default function OptionChain() {
           <select 
             value={indices.includes(symbol) ? "" : symbol}
             onChange={(e) => setSymbol(e.target.value)}
-            className="terminal w-32 cursor-pointer !py-2"
+            className="terminal !w-32 cursor-pointer !py-2"
           >
             <option disabled value="" className="bg-white text-gray-500">Equities</option>
             {equities.map((s) => <option key={s} value={s} className="bg-white text-black">{s}</option>)}
@@ -56,7 +59,7 @@ export default function OptionChain() {
           <select 
             value={indices.includes(symbol) ? symbol : ""}
             onChange={(e) => setSymbol(e.target.value)}
-            className="terminal w-36 cursor-pointer !py-2"
+            className="terminal !w-36 cursor-pointer !py-2"
           >
             <option disabled value="" className="bg-white text-gray-500">Indices</option>
             {indices.map((s) => <option key={s} value={s} className="bg-white text-black">{s}</option>)}
@@ -65,13 +68,23 @@ export default function OptionChain() {
             <select
               value={chain.expiry}
               onChange={(e) => setExpiry(e.target.value)}
-              className="terminal w-40 cursor-pointer !py-2"
+              className="terminal !w-40 cursor-pointer !py-2"
             >
               {chain.available_expiries.map((exp) => (
                 <option key={exp} value={exp} className="bg-white text-black">{exp}</option>
               ))}
             </select>
           )}
+          
+          <label className="flex items-center gap-2 cursor-pointer ml-auto bg-blue-50 text-blue-700 px-3 py-1.5 rounded-full border border-blue-200 hover:bg-blue-100 transition-colors">
+            <input
+              type="checkbox"
+              checked={strategyMode}
+              onChange={(e) => setStrategyMode(e.target.checked)}
+              className="accent-blue-600"
+            />
+            <span className="text-sm font-bold">Strategy Builder</span>
+          </label>
         </div>
         <p className="dim text-sm mt-1">Live PCR, Max Pain, OI heat-strip, IV smile (Black-Scholes Newton-Raphson) and per-strike Greeks. Source: <span className="mono buy">{chain.source === "synthetic" ? "offline" : (chain.source || "offline")}</span></p>
       </div>
@@ -88,8 +101,20 @@ export default function OptionChain() {
         <Panel title="MACD" kicker="momentum & trend"><MACDChart history={historyRes?.candles || []} /></Panel>
       </div>
 
+      {strategyMode && (
+        <StrategyBuilderPanel 
+          legs={strategyLegs} 
+          onRemoveLeg={(idx) => setStrategyLegs(strategyLegs.filter((_, i) => i !== idx))}
+          onClear={() => setStrategyLegs([])}
+        />
+      )}
+
       <Panel title="Option chain" kicker="ATM ± 15 strikes">
-        <ChainTable chain={chain} />
+        <ChainTable 
+          chain={chain} 
+          strategyMode={strategyMode} 
+          onAddLeg={(leg) => setStrategyLegs([...strategyLegs, leg])} 
+        />
       </Panel>
 
       <Panel title={`Greeks @ ATM ${chain.atm}`} kicker="Black-Scholes · risk-free 7%">

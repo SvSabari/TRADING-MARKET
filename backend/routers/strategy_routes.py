@@ -26,6 +26,9 @@ async def kinds(user: User = Depends(get_current_user)):
             {"id": "gap_and_go",             "name": "Gap & Go",                 "description": "Buys stocks that gap up 1.5%+ at market open and continue higher. Capitalises on news-driven momentum.", "params_hint": "gap_pct=0.015", "category": "momentum"},
             {"id": "smart_money",            "name": "Smart Money Flow",         "description": "Follows huge volume spikes with directional price moves — a proxy for institutional whale activity.", "params_hint": "None", "category": "momentum"},
             {"id": "gamma_scalping",         "name": "Gamma Scalping",           "description": "Profits from wild price swings by fading extreme moves beyond ATR bands without guessing direction.", "params_hint": "None", "category": "scalping"},
+            {"id": "donchian_breakout",      "name": "Donchian Breakout",        "description": "Buys when price breaks the N-period high, sells on the N-period low. Classic Turtle Trading trend strategy.", "params_hint": "period=20", "category": "trend"},
+            {"id": "zscore_reversion",       "name": "Statistical Z-Score",      "description": "Mean reversion based on Z-Score. Buys when price is statistically oversold and sells when overbought.", "params_hint": "period=20, entry_z=2.0", "category": "reversal"},
+            {"id": "keltner_channel",        "name": "Keltner Channel Momentum", "description": "Breakout strategy using ATR channels. Buys when price breaks above the upper channel.", "params_hint": "period=20, multiplier=2.0", "category": "momentum"},
         ]
     }
 

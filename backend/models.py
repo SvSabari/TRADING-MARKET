@@ -10,7 +10,7 @@ class User(BaseDocument):
     email: EmailStr
     name: str
     password_hash: str
-    role: str = "trader"  # trader, admin
+    role: str = "trader"  # trader | managed_user
     tv_webhook_secret: str = ""  # per-user webhook secret
     created_at: datetime = Field(default_factory=utc_now)
 
@@ -83,6 +83,9 @@ class Order(BaseDocument):
     placed_at: datetime = Field(default_factory=utc_now)
     filled_at: Optional[datetime] = None
     pnl: float = 0.0
+    target: Optional[float] = None
+    stop_loss: Optional[float] = None
+    is_bracket: bool = False
 
 
 class OrderCreate(BaseModel):
@@ -94,6 +97,9 @@ class OrderCreate(BaseModel):
     order_type: str = "MARKET"
     product: str = "MIS"
     force_mock: bool = False
+    copy_to_users: bool = True
+    target: Optional[float] = None
+    stop_loss: Optional[float] = None
 
 
 # ---------- Positions ----------
@@ -113,6 +119,7 @@ class Strategy(BaseDocument):
     name: str
     kind: str  # ema_crossover / oi_breakout / vwap_scalping / gamma_scalping / smart_money
     enabled: bool = False
+    copy_to_users: bool = True
     params: Dict[str, Any] = Field(default_factory=dict)
     symbols: List[str] = Field(default_factory=list)
     fire_count: int = 0
@@ -124,6 +131,7 @@ class StrategyCreate(BaseModel):
     name: str
     kind: str
     enabled: bool = False
+    copy_to_users: bool = True
     params: Dict[str, Any] = Field(default_factory=dict)
     symbols: List[str] = Field(default_factory=list)
     interval_seconds: int = 15
@@ -132,6 +140,7 @@ class StrategyCreate(BaseModel):
 class StrategyUpdate(BaseModel):
     name: Optional[str] = None
     enabled: Optional[bool] = None
+    copy_to_users: Optional[bool] = None
     params: Optional[Dict[str, Any]] = None
     symbols: Optional[List[str]] = None
 
@@ -169,9 +178,9 @@ class BrokerConnectionUpsert(BaseModel):
     broker: str
     api_key: str = ""
     api_secret: str = ""
-    is_data_feed: bool = False
-    is_order_exec: bool = False
-    mock_mode: bool = True
+    is_data_feed: Optional[bool] = None
+    is_order_exec: Optional[bool] = None
+    mock_mode: Optional[bool] = None
     credentials: Dict[str, Any] = Field(default_factory=dict)
 
 
@@ -205,11 +214,94 @@ class BacktestRequest(BaseModel):
     params: Dict[str, Any] = Field(default_factory=dict)
 
 
-# ---------- Parquet file metadata ----------
-class ParquetFileInfo(BaseModel):
+# ---------- Market Data (Database equivalent of parquet) ----------
+class MarketCandle(BaseDocument):
     symbol: str
-    filename: str
-    path: str
-    size_bytes: int
-    row_count: int
-    last_modified: datetime
+    ts: datetime
+    open: float
+    high: float
+    low: float
+    close: float
+    volume: int
+    cum_volume: int
+
+
+# ---------- Managed Users (trader sub-accounts) ----------
+
+# ---------- Managed Users (sub-accounts) ----------
+
+class ManagedUserBroker(BaseModel):
+    """Credentials + session info for one broker belonging to a managed user."""
+    broker: str                            # alice_blue / icici / zerodha / angel / upstox / fyers
+    api_key: str = ""
+    api_secret: str = ""
+    account_number: str = ""              # broker client ID / account number
+    account_password: str = ""            # broker login password / TOTP secret
+    credentials: Dict[str, str] = Field(default_factory=dict) # dynamic broker fields (user_id, totp_secret, session_token, etc.)
+    session_token: str = ""
+    session_generated: bool = False
+    session_date: str = ""
+
+
+class ManagedUser(BaseDocument):
+    trader_id: str                         # references User._id of the owning trader
+    name: str
+    phone: str                             # used as login username
+    password_hash: str
+    bank_account: str = ""
+    brokers: List[ManagedUserBroker] = Field(default_factory=list)
+    place_order: bool = True
+    profit_pct: float = 0.0
+    account_status: str = "active"         # active | deactivated
+    created_at: datetime = Field(default_factory=utc_now)
+
+
+class ManagedUserPublic(BaseModel):
+    id: str
+    trader_id: str
+    name: str
+    phone: str
+    bank_account: str
+    brokers: List[ManagedUserBroker]
+    place_order: bool
+    profit_pct: float
+    account_status: str
+    created_at: datetime
+
+
+class ManagedUserBrokerCreate(BaseModel):
+    broker: str
+    api_key: Optional[str] = ""
+    api_secret: Optional[str] = ""
+    account_number: Optional[str] = ""
+    account_password: Optional[str] = ""
+    credentials: Dict[str, str] = Field(default_factory=dict)
+
+
+class ManagedUserCreate(BaseModel):
+    name: str
+    phone: str
+    password: str
+    bank_account: str = ""
+    brokers: List[ManagedUserBrokerCreate] = Field(default_factory=list)
+    place_order: bool = True
+    profit_pct: float = 0.0
+    account_status: str = "active"
+
+
+class ManagedUserUpdate(BaseModel):
+    name: Optional[str] = None
+    phone: Optional[str] = None
+    password: Optional[str] = None
+    bank_account: Optional[str] = None
+
+    brokers: Optional[List[ManagedUserBrokerCreate]] = None
+    place_order: Optional[bool] = None
+    profit_pct: Optional[float] = None
+    account_status: Optional[str] = None
+
+
+class UserLoginRequest(BaseModel):
+    phone: str
+    password: str
+

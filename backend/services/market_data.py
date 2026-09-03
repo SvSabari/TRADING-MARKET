@@ -21,7 +21,7 @@ from collections import deque
 from datetime import datetime, timezone
 from typing import Deque, Dict, List, Optional, Set
 
-from constants import NIFTY_50, INDICES, SEED_PRICES, ALL_SYMBOLS
+from constants import NIFTY_50, INDICES, ALL_SYMBOLS
 
 TICK_INTERVAL = 1.0  # seconds — synthetic tick cadence
 HISTORY_LEN = 600    # keep last 10min of 1s ticks per symbol
@@ -31,7 +31,7 @@ LIVE_FRESH_SECONDS = 60.0  # if a symbol has had a live tick within this window,
 
 class TickEngine:
     def __init__(self) -> None:
-        self.prices: Dict[str, float] = dict(SEED_PRICES)
+        self.prices: Dict[str, float] = {s: 0.0 for s in ALL_SYMBOLS}
         self.history: Dict[str, Deque[dict]] = {
             s: deque(maxlen=HISTORY_LEN) for s in ALL_SYMBOLS
         }
@@ -151,75 +151,10 @@ class TickEngine:
     # ------------------------------------------------------------------ synth
     async def _tick_loop(self) -> None:
         self.running = True
-        import aiohttp
-        
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-            'Accept': '*/*',
-        }
-        
-        async with aiohttp.ClientSession(headers=headers) as session:
-            # Get initial cookies
-            try:
-                await session.get('https://www.nseindia.com', timeout=5)
-            except Exception:
-                pass
-                
-            last_fetch_time = 0
-            nse_data_cache = {}
-
-            while self.running:
-                now = time.monotonic()
-                ts_iso = datetime.now(timezone.utc).isoformat()
-                
-                live = {s for s, t in self._last_live_ts.items() if now - t < LIVE_FRESH_SECONDS}
-                missing_symbols = [s for s in ALL_SYMBOLS if s not in live]
-                
-                batch = []
-                
-                # If we have missing symbols, fetch real data from NSE every 5 seconds
-                if missing_symbols and now - last_fetch_time > 5.0:
-                    last_fetch_time = now
-                    try:
-                        async with session.get('https://www.nseindia.com/api/allIndices', timeout=5) as r:
-                            if r.status == 200:
-                                data = await r.json()
-                                for d in data.get('data', []):
-                                    idx_name = d.get('index', '').upper()
-                                    if 'NEXT 50' in idx_name:
-                                        nse_data_cache['NIFTYNXT50'] = d['last']
-                                    elif idx_name == 'NIFTY 50':
-                                        nse_data_cache['NIFTY'] = d['last']
-                                    elif idx_name == 'NIFTY BANK':
-                                        nse_data_cache['BANKNIFTY'] = d['last']
-                    except Exception as e:
-                        pass
-                
-                for s in missing_symbols:
-                    # Try to use real NSE data if we have it
-                    if s in nse_data_cache and nse_data_cache[s] > 0:
-                        self.prices[s] = float(nse_data_cache[s])
-                        self._last_nse_ts[s] = now
-                    
-                    rec = {
-                        "ts": ts_iso,
-                        "symbol": s,
-                        "ltp": round(self.prices[s], 2),
-                        "volume": 0,
-                        "cum_volume": self.volume_cum[s],
-                        "source": "nse-fallback",
-                    }
-                    self.history[s].append(rec)
-                    batch.append(rec)
-                    
-                if batch:
-                    for q in list(self._listeners):
-                        try:
-                            q.put_nowait(batch)
-                        except asyncio.QueueFull:
-                            pass
-                            
-                await asyncio.sleep(TICK_INTERVAL)
+        while self.running:
+            # Synthetic/fallback ticks have been disabled per user request.
+            # Only live broker ticks (via push_live_tick) will populate the engine.
+            await asyncio.sleep(TICK_INTERVAL)
 
     def start(self) -> None:
         if self._task is None or self._task.done():

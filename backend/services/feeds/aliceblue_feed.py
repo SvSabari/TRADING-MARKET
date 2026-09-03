@@ -61,8 +61,8 @@ class AliceblueFeed(LiveFeed):
         if not sym:
             sym = self.symbol_map.get(f"NFO|{tok}") or self.symbol_map.get(f"BFO|{tok}") or self.symbol_map.get(f"NSE|{tok}") or self.symbol_map.get(f"BSE|{tok}")
         if not sym:
-            with open("unmapped_tokens.txt", "a") as f:
-                f.write(f"Unmapped token: {tok} from message: {message}\n")
+            # with open("unmapped_tokens.txt", "a") as f:
+            #     f.write(f"Unmapped token: {tok} from message: {message}\n")
             return
             
         lp_val = message.get("lp") or message.get("LTP") or 0.0
@@ -71,8 +71,8 @@ class AliceblueFeed(LiveFeed):
         except (ValueError, TypeError):
             ltp = 0.0
             
-        with open("all_ticks.txt", "a") as f:
-            f.write(f"Tick received: sym={sym}, ltp={ltp}\n")
+        # with open("all_ticks.txt", "a") as f:
+        #     f.write(f"Tick received: sym={sym}, ltp={ltp}\n")
             
         if ltp <= 0:
             return

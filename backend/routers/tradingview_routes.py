@@ -51,6 +51,10 @@ async def _process_signal(user_id: str, sig: TVSignal, broker_name: str = "mock"
         f"× {sig.qty} @ ₹{order.price} via {broker_name}",
         data={"kind": "tv_signal", "signal_id": sig.id, "order_id": order.id},
     )
+    # Mirror to all eligible managed users (fire-and-forget)
+    import asyncio
+    from services.managed_order_engine import mirror_order_to_managed_users
+    asyncio.create_task(mirror_order_to_managed_users(db, user_id, order))
     return order
 
 

@@ -25,27 +25,24 @@ ICICI_INDEX_MAP = {
     "NIFTYNXT50": "CNXNXT"
 }
 
-# Approximate seed prices (INR) for the mock tick generator
-SEED_PRICES = {
-    "RELIANCE": 1305.0, "HDFCBANK": 1530.0, "ICICIBANK": 1075.0, "INFY": 1885.0, "TCS": 4280.0,
-    "BHARTIARTL": 1640.0, "ITC": 460.0, "LT": 3650.0, "KOTAKBANK": 1720.0, "AXISBANK": 1180.0,
-    "SBIN": 815.0, "BAJFINANCE": 6925.0, "HINDUNILVR": 2410.0, "ASIANPAINT": 2380.0, "MARUTI": 12450.0,
-    "HCLTECH": 1880.0, "SUNPHARMA": 1820.0, "TITAN": 3370.0, "ULTRACEMCO": 11550.0, "WIPRO": 555.0,
-    "M&M": 2970.0, "NESTLEIND": 2280.0, "POWERGRID": 320.0, "NTPC": 360.0, "ONGC": 275.0,
-    "TATAMOTORS": 845.0, "TATASTEEL": 145.0, "JSWSTEEL": 980.0, "ADANIENT": 2450.0, "ADANIPORTS": 1340.0,
-    "BAJAJFINSV": 1660.0, "BAJAJ-AUTO": 9450.0, "HEROMOTOCO": 4730.0, "EICHERMOT": 4880.0, "GRASIM": 2680.0,
-    "DRREDDY": 1290.0, "CIPLA": 1505.0, "DIVISLAB": 5740.0, "APOLLOHOSP": 6890.0, "BRITANNIA": 4815.0,
-    "COALINDIA": 415.0, "BPCL": 295.0, "IOC": 140.0, "HDFCLIFE": 680.0, "SBILIFE": 1495.0,
-    "TECHM": 1670.0, "INDUSINDBK": 985.0, "UPL": 565.0, "TATACONSUM": 945.0, "LTIM": 5660.0,
-    "NIFTY": 24000.0, "BANKNIFTY": 52000.0, "FINNIFTY": 23000.0, 
-    "MIDCPNIFTY": 12000.0, "SENSEX": 80000.0, "NIFTYNXT50": 72000.0,
-}
-
 ALL_SYMBOLS = NIFTY_50 + INDICES
 
-BROKERS = ["zerodha", "breeze", "angel", "fyers", "upstox", "dhan", "mock"]
+BROKERS = ["zerodha", "breeze", "angel", "fyers", "upstox", "dhan"]
 
 STRATEGY_KINDS = [
-    "ema_crossover", "oi_breakout", "vwap_scalping",
-    "gamma_scalping", "smart_money",
+    "ema_crossover",
+    "macd_crossover",
+    "supertrend",
+    "rsi_divergence",
+    "bollinger_band",
+    "vwap_scalping",
+    "opening_range_breakout",
+    "volume_spike_breakout",
+    "oi_breakout",
+    "gap_and_go",
+    "smart_money",
+    "gamma_scalping",
+    "donchian_breakout",
+    "zscore_reversion",
+    "keltner_channel",
 ]

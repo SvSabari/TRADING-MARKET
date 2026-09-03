@@ -17,7 +17,7 @@ export default function Positions() {
       } catch (e) { console.error("api fetch failed:", e); }
     };
     load();
-    const i = setInterval(load, 2000);
+    const i = setInterval(load, 10000);
     return () => { cancel = true; clearInterval(i); };
   }, []);
 

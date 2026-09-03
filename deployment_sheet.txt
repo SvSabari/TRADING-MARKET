@@ -1,0 +1,66 @@
+=========================================================
+ TRADING TERMINAL - DOCKER DEPLOYMENT CHEAT SHEET
+=========================================================
+Follow these exact steps if you are handed a blank Linux (Ubuntu) server 
+and told to host the application yourself.
+
+STEP 1: INSTALL DOCKER
+---------------------------------------------------------
+Once you are logged into the server's terminal, copy and paste this command:
+
+curl -fsSL https://get.docker.com -o get-docker.sh && sudo sh get-docker.sh
+
+(Wait a minute or two for the installation to finish).
+
+STEP 2: GET YOUR CODE ONTO THE SERVER
+---------------------------------------------------------
+The easiest way is to download it from your GitHub repository:
+
+git clone https://github.com/your-username/your-trading-repo.git
+
+Then, go into the folder:
+
+cd your-trading-repo
+(Change 'your-trading-repo' to the actual folder name)
+
+
+STEP 3: SETUP THE PASSWORDS (.env file)
+---------------------------------------------------------
+1. Copy the example file to make your real .env file:
+   cp .env.example .env
+
+2. Open the file in a text editor:
+   nano .env
+
+3. Use your arrow keys to change the following:
+   - REACT_APP_BACKEND_URL (Change this to the server's Public IP, e.g., http://198.51.100.5:8001)
+   - JWT_SECRET (Type a random strong password here)
+
+4. To Save and Exit: 
+   Press Ctrl + X
+   Press Y
+   Press Enter
+
+
+STEP 4: START THE APP
+---------------------------------------------------------
+Run this final magic command to build and start the database, frontend, and backend:
+
+sudo docker-compose up -d --build
+
+(Wait 3 to 5 minutes. You will see a lot of text scrolling as it downloads everything).
+
+
+STEP 5: TEST IT
+---------------------------------------------------------
+Open a web browser on your laptop and type the server's IP address followed by :3000
+Example: http://198.51.100.5:3000
+
+Your dashboard should now load!
+
+
+FINAL BROKER STEP:
+---------------------------------------------------------
+Don't forget to log into your broker's API dashboard (Zerodha, ICICI, etc.) 
+and add this server's Public IP Address to the "Whitelist" or "Redirect URL" section. 
+If you skip this, the broker will block your trades!

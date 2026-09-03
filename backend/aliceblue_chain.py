@@ -76,8 +76,7 @@ async def build_aliceblue_chain(alice, symbol: str = "NIFTY", expiry: str = None
             step = 50.0
 
         spot = tick_engine.prices.get(symbol, 0.0)
-        from constants import SEED_PRICES
-        if not spot or spot == SEED_PRICES.get(symbol):
+        if not spot:
             token_str = ""
             if symbol == "SENSEX": token_str = "BSE|1"
             elif symbol == "NIFTY": token_str = "NSE|26000"
@@ -99,7 +98,7 @@ async def build_aliceblue_chain(alice, symbol: str = "NIFTY", expiry: str = None
         # If Alice Blue rate limited the ltp call, spot might still be 0.
         # Fallback to the seed price so we can at least build the real strikes!
         if not spot:
-            spot = tick_engine.prices.get(symbol) or SEED_PRICES.get(symbol, 1000.0)
+            spot = tick_engine.prices.get(symbol)
 
         if not spot:
             with open("alice_debug.txt", "w") as f: f.write(f"Aliceblue chain returning None: spot is {spot}\n")

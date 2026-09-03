@@ -1,27 +1,9 @@
-# Python
-__pycache__/
-*.pyc
-venv/
-.env
-
-# Logs
-*.log
-logs/
-
-# Database
-*.db
-
-# Trading generated data
-data/parquet/
-*.parquet
-
-# Credentials
-backend/*_creds.json
-backend/ab_creds.json
-
-# Node
+node_modules/
 frontend/node_modules/
-frontend/build/
-
-# Node runtime
+backend/__pycache__/
+backend/venv/
+backend/all_ticks.txt
+backend/unmapped_tokens.txt
+backend/breeze_tick_dump.txt
 nodejs/
+.env

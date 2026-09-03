@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { fmtDateTime } from "@/lib/format";
 import Panel from "@/components/Panel";
+import { Trash2 } from "lucide-react";
 
 const SEV = { info: "dim", success: "buy", warning: "warn", danger: "sell" };
 
@@ -19,6 +20,17 @@ export default function Notifications() {
 
   const markAll = async () => { await api.post("/notifications/read-all"); load(); };
 
+  const deleteAll = async () => {
+    if (!window.confirm("Are you sure you want to delete all notifications?")) return;
+    await api.delete("/notifications/all");
+    load();
+  };
+
+  const deleteOne = async (id) => {
+    await api.delete(`/notifications/${id}`);
+    load();
+  };
+
   return (
     <div className="space-y-4" data-testid="notifications-page">
       <div className="flex items-center justify-between">
@@ -26,7 +38,10 @@ export default function Notifications() {
           <h1 style={{ fontFamily: "Chivo", fontWeight: 900, fontSize: 28, letterSpacing: "-0.02em" }}>Notifications.</h1>
           <p className="dim text-sm mt-1">All in-app events from signals, orders and strategies.</p>
         </div>
-        <button className="btn" onClick={markAll} data-testid="notif-mark-all-read">Mark all read</button>
+        <div className="flex gap-2">
+          <button className="btn" onClick={markAll} data-testid="notif-mark-all-read">Mark all read</button>
+          <button className="btn-ghost text-[var(--danger)]" onClick={deleteAll}>Delete all</button>
+        </div>
       </div>
       <Panel title="Feed" kicker={`${items.length}`}>
         <div className="cell-divider">
@@ -38,8 +53,17 @@ export default function Notifications() {
                 <div className="text-sm" style={{ fontFamily: "IBM Plex Sans", fontWeight: 600 }}>{n.title}</div>
                 <div className="dim text-xs mt-1">{n.message}</div>
               </div>
-              <div className="dim text-[10px] mono">{fmtDateTime(n.created_at)}</div>
-              {!n.read && <span className="dot dot-live" />}
+              <div className="flex items-center gap-3">
+                <div className="dim text-[10px] mono">{fmtDateTime(n.created_at)}</div>
+                {!n.read && <span className="dot dot-live" />}
+                <button 
+                  onClick={() => deleteOne(n.id)}
+                  className="p-1 rounded hover:bg-[var(--surface-hover)] transition-colors opacity-50 hover:opacity-100 hover:text-[var(--danger)]"
+                  title="Delete notification"
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
             </div>
           ))}
         </div>

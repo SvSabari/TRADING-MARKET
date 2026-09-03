@@ -19,25 +19,24 @@ from typing import Dict, List
 
 import pandas as pd
 
-DEFAULT_PARQUET_DIR = Path(__file__).resolve().parents[2] / "data" / "parquet"
-PARQUET_DIR = Path(os.environ.get("PARQUET_DATA_DIR", DEFAULT_PARQUET_DIR))
-
+from db import sync_db
 
 def _load_symbol_data(symbol: str, period_days: int) -> pd.DataFrame:
-    """Concatenate all per-day Parquet files for the symbol within window."""
-    today = datetime.now(timezone.utc).date()
-    frames: List[pd.DataFrame] = []
-    for delta_days in range(period_days + 1):
-        d = today - timedelta(days=delta_days)
-        f = PARQUET_DIR / d.strftime("%Y-%m-%d") / f"{symbol.upper()}.parquet"
-        if f.exists():
-            try:
-                frames.append(pd.read_parquet(f))
-            except Exception:
-                pass
-    if not frames:
+    """Fetch historical tick data from MongoDB."""
+    today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    start_time = today - timedelta(days=period_days)
+    
+    # Query mongodb for the ticks
+    cursor = sync_db.market_candles.find({
+        "symbol": symbol.upper(),
+        "ts": {"$gte": start_time}
+    }).sort("ts", 1)
+    
+    docs = list(cursor)
+    if not docs:
         return pd.DataFrame()
-    df = pd.concat(frames, ignore_index=True)
+        
+    df = pd.DataFrame(docs)
     df["ts"] = pd.to_datetime(df["ts"], utc=True, errors="coerce")
     df = df.dropna(subset=["ts"]).sort_values("ts").reset_index(drop=True)
     return df
@@ -83,7 +82,8 @@ def _signals_vwap_scalping(df: pd.DataFrame, params: Dict) -> pd.Series:
     z = (df["close"] - vwap) / vwap
     sig = pd.Series(0, index=df.index)
     sig[z < -float(params.get("entry_z", 0.002))] = 1
-    sig[z > float(params.get("exit_z", 0.002))] = -1
+    sig[z > float(params.get("entry_z", 0.002))] = -1
+    sig[z.abs() < float(params.get("exit_z", 0.0005))] = 2
     return sig
 
 
@@ -177,8 +177,12 @@ def _signals_rsi_divergence(df: pd.DataFrame, params: Dict) -> pd.Series:
     rs = gain / loss.replace(0, 1e-6)
     rsi = 100 - (100 / (1 + rs))
     sig = pd.Series(0, index=df.index)
-    sig[(rsi.shift(1) < oversold) & (rsi >= oversold)] = 1   # cross up from oversold
-    sig[(rsi.shift(1) > overbought) & (rsi <= overbought)] = -1  # cross down from overbought
+    sig[(rsi.shift(1) < oversold) & (rsi >= oversold)] = 1
+    sig[(rsi.shift(1) > overbought) & (rsi <= overbought)] = -1
+    
+    # Close at median (50)
+    sig[(rsi.shift(1) < 50) & (rsi >= 50)] = 2
+    sig[(rsi.shift(1) > 50) & (rsi <= 50)] = 2
     return sig
 
 
@@ -213,7 +217,11 @@ def _signals_bollinger_band(df: pd.DataFrame, params: Dict) -> pd.Series:
     lower = sma - std_mult * std
     sig = pd.Series(0, index=df.index)
     sig[df["close"] <= lower] = 1   # buy at lower band
-    sig[df["close"] >= upper] = -1  # sell at upper band
+    sig[df["close"] >= upper] = -1  # short at upper band
+    
+    # Close at median (SMA)
+    sig[(df["close"].shift(1) < sma) & (df["close"] >= sma)] = 2
+    sig[(df["close"].shift(1) > sma) & (df["close"] <= sma)] = 2
     return sig
 
 
@@ -271,6 +279,66 @@ def _signals_gap_and_go(df: pd.DataFrame, params: Dict) -> pd.Series:
     return sig
 
 
+def _signals_donchian_breakout(df: pd.DataFrame, params: Dict) -> pd.Series:
+    """Donchian Breakout: Buy when price breaks N-period high, sell on N-period low."""
+    if len(df) < 20:
+        return pd.Series([0] * len(df), index=df.index)
+    period = int(params.get("period", 20))
+    upper = df["high"].rolling(period).max()
+    lower = df["low"].rolling(period).min()
+    sig = pd.Series(0, index=df.index)
+    sig[df["close"] > upper.shift(1)] = 1
+    sig[df["close"] < lower.shift(1)] = -1
+    
+    # Close when crossing median MA
+    sma_fast = df["close"].rolling(10).mean()
+    sig[(df["close"].shift(1) < sma_fast) & (df["close"] >= sma_fast)] = 2
+    sig[(df["close"].shift(1) > sma_fast) & (df["close"] <= sma_fast)] = 2
+    return sig
+
+
+def _signals_zscore_reversion(df: pd.DataFrame, params: Dict) -> pd.Series:
+    """Z-Score Reversion: Buy when z-score < -2, sell when z-score > 2."""
+    if len(df) < 20:
+        return pd.Series([0] * len(df), index=df.index)
+    period = int(params.get("period", 20))
+    entry_z = float(params.get("entry_z", 2.0))
+    sma = df["close"].rolling(period).mean()
+    std = df["close"].rolling(period).std()
+    z_score = (df["close"] - sma) / std.replace(0, 1e-6)
+    sig = pd.Series(0, index=df.index)
+    sig[z_score < -entry_z] = 1
+    sig[z_score > entry_z] = -1
+    sig[z_score.abs() < 0.2] = 2  # Close when near zero
+    return sig
+
+
+def _signals_keltner_channel(df: pd.DataFrame, params: Dict) -> pd.Series:
+    """Keltner Channel: Breakout strategy using ATR channels."""
+    if len(df) < 20:
+        return pd.Series([0] * len(df), index=df.index)
+    period = int(params.get("period", 20))
+    mult = float(params.get("multiplier", 2.0))
+    tr = pd.concat([
+        df["high"] - df["low"],
+        (df["high"] - df["close"].shift(1)).abs(),
+        (df["low"] - df["close"].shift(1)).abs(),
+    ], axis=1).max(axis=1)
+    atr = tr.rolling(period).mean()
+    ema = _ema(df["close"], period)
+    upper = ema + mult * atr
+    lower = ema - mult * atr
+    sig = pd.Series(0, index=df.index)
+    sig[df["close"] > upper] = 1
+    sig[df["close"] < lower] = -1
+    
+    # Close at median (EMA)
+    sig[(df["close"].shift(1) < ema) & (df["close"] >= ema)] = 2
+    sig[(df["close"].shift(1) > ema) & (df["close"] <= ema)] = 2
+    return sig
+
+
+
 _SIG_MAP = {
     "ema_crossover": _signals_ema_crossover,
     "vwap_scalping": _signals_vwap_scalping,
@@ -284,6 +352,9 @@ _SIG_MAP = {
     "opening_range_breakout": _signals_opening_range_breakout,
     "volume_spike_breakout": _signals_volume_spike_breakout,
     "gap_and_go": _signals_gap_and_go,
+    "donchian_breakout": _signals_donchian_breakout,
+    "zscore_reversion": _signals_zscore_reversion,
+    "keltner_channel": _signals_keltner_channel,
 }
 
 
@@ -314,20 +385,30 @@ def _close_position(state: SimState, fill: float, ts: str, final: bool = False) 
     if final:
         entry["final"] = True
     state.trades_log.append(entry)
+    state.position = 0
 
 
 def _open_position(state: SimState, side: int, fill: float) -> None:
     """Open a new long/short position sized at ~95% of equity."""
+    if state.equity <= 0:
+        return
     state.qty = max(1, int(state.equity * 0.95 / fill))
     state.position = side
     state.entry_price = fill
 
 
-def _simulate(df: pd.DataFrame, signals: pd.Series) -> Dict:
+def _simulate(df: pd.DataFrame, signals: pd.Series, params: Dict = None) -> Dict:
     """Long/short single-position simulator with next-bar-open fills."""
+    params = params or {}
+    sl_pct = float(params.get("stop_loss_pct", 0.01))
+    tp_pct = float(params.get("take_profit_pct", 0.02))
+
     if df.empty or len(df) < 3:
         return {"metrics": {}, "equity_curve": [], "trades_log": []}
     state = SimState()
+    
+    # Intraday square-off times (UTC). 09:45 UTC = 15:15 IST
+    square_off_times = ["09:45:00", "09:50:00", "09:55:00"]
     
     # Pre-extract numpy arrays for fast iteration
     sig_vals = signals.values
@@ -344,13 +425,27 @@ def _simulate(df: pd.DataFrame, signals: pd.Series) -> Dict:
         state.max_dd = max(state.max_dd, (state.peak - eq) / state.peak if state.peak else 0)
         state.curve.append({"t": int(i), "ts": ts_vals[i],
                              "equity": round(eq, 2), "price": bar_close})
+
+        # Check Stop-Loss / Take-Profit / Intraday Square-off
+        if state.position != 0:
+            is_eod = any(t in ts_vals[i] for t in square_off_times)
+            pnl_pct = (bar_close - state.entry_price) / state.entry_price * state.position
+            
+            if pnl_pct <= -sl_pct or pnl_pct >= tp_pct or is_eod:
+                fill = float(open_vals[i + 1])
+                if not math.isnan(fill):
+                    _close_position(state, fill, ts_vals[i + 1])
+                continue
+
         if sig == 0 or sig == state.position:
             continue
         fill = float(open_vals[i + 1])
         if math.isnan(fill):
             continue
-        _close_position(state, fill, ts_vals[i + 1])
-        _open_position(state, sig, fill)
+        if state.position != 0:
+            _close_position(state, fill, ts_vals[i + 1])
+        if sig in (1, -1):
+            _open_position(state, sig, fill)
 
     # final close on last bar
     last_close = float(close_vals[-1])
@@ -389,7 +484,7 @@ def run_backtest(strategy_kind: str, symbol: str, period_days: int, params: Dict
         return {"metrics": {}, "equity_curve": [], "trades_log": [], "data_source": "none", "reason": "insufficient_candles"}
     sig_fn = _SIG_MAP.get(strategy_kind, _signals_ema_crossover)
     signals = sig_fn(candles, params)
-    res = _simulate(candles, signals)
+    res = _simulate(candles, signals, params)
     res["data_source"] = "parquet"
     res["bars_loaded"] = len(candles)
     res["raw_ticks"] = len(df)

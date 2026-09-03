@@ -47,7 +47,11 @@ class AngelFeed(LiveFeed):
         if ltp_paise is None:
             ltp_paise = msg.get("ltp") or 0
         ltp = float(ltp_paise) / 100.0
-        cum = int(msg.get("volume_trade_for_the_day") or msg.get("vol") or 0)
+        vol_val = msg.get("volume_trade_for_the_day") or msg.get("vol") or 0
+        try:
+            cum = int(vol_val)
+        except (ValueError, TypeError):
+            cum = 0
         prev = self._last_cum_volume.get(tok, cum)
         delta = max(0, cum - prev)
         self._last_cum_volume[tok] = cum

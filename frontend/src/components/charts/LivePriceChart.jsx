@@ -14,7 +14,7 @@ export default function LivePriceChart({ history }) {
           <XAxis dataKey="ts" tick={X_TICK} tickFormatter={formatter} stroke="#222" />
           <YAxis domain={["auto", "auto"]} tick={TICK} stroke="#222" />
           <Tooltip contentStyle={TOOLTIP_STYLE} labelStyle={{ color: "#888" }} />
-          <Line type="monotone" dataKey="ltp" stroke="#00E676" strokeWidth={1.5} dot={false} isAnimationActive={false} />
+          <Line type="linear" dataKey="ltp" stroke="#00E676" strokeWidth={1.5} dot={false} isAnimationActive={false} />
         </LineChart>
       </ResponsiveContainer>
     </div>

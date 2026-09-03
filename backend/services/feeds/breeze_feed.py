@@ -54,7 +54,11 @@ class BreezeFeed(LiveFeed):
             if parsed: to_emit.append(parsed)
             
         if to_emit and self._loop:
-            self._loop.call_soon_threadsafe(self._emit_many, to_emit)
+            if not self._loop.is_closed():
+                try:
+                    self._loop.call_soon_threadsafe(self._emit_many, to_emit)
+                except RuntimeError:
+                    pass
 
     def _parse_tick(self, t: dict) -> tuple | None:
         stock_code = t.get("stock_code") or t.get("symbol")
@@ -67,7 +71,11 @@ class BreezeFeed(LiveFeed):
             
         ltp = float(t.get("last") or t.get("ltp") or t.get("close") or 0)
         
-        cum_vol = int(t.get("totalQtyTraded") or t.get("volume") or 0)
+        vol_val = t.get("ttq") or t.get("totalQtyTraded") or t.get("volume") or 0
+        try:
+            cum_vol = int(vol_val)
+        except (ValueError, TypeError):
+            cum_vol = 0
         prev = self._last_cum_volume.get(sym, cum_vol)
         delta = max(0, cum_vol - prev)
         self._last_cum_volume[sym] = cum_vol

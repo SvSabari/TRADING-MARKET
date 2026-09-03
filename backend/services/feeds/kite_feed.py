@@ -34,7 +34,11 @@ class KiteFeed(LiveFeed):
             if not sym:
                 continue
             ltp = t.get("last_price") or t.get("ohlc", {}).get("close") or 0
-            cum = int(t.get("volume_traded") or t.get("volume") or 0)
+            vol_val = t.get("volume_traded") or t.get("volume") or 0
+            try:
+                cum = int(vol_val)
+            except (ValueError, TypeError):
+                cum = 0
             prev = self._last_cum_volume.get(tok, cum)
             delta = max(0, cum - prev)
             self._last_cum_volume[tok] = cum

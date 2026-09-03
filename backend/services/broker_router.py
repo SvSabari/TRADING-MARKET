@@ -229,7 +229,9 @@ async def _route_aliceblue(db, user_id: str, *, symbol: str, side: str, qty: int
         if order_id:
             return _live_response(order_id, price, "live-aliceblue")
     except Exception as e:
-        logger.warning("AliceBlue order failed, falling back: %s", e)
+        logger.warning("AliceBlue order failed: %s", e)
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail=f"AliceBlue Error: {str(e)}")
     return None
 
 
@@ -271,3 +273,33 @@ async def route_order(db, user_id: str, broker_name: str, *,
     # If a real broker was requested but failed (e.g. API error, IP rejection)
     from fastapi import HTTPException
     raise HTTPException(status_code=400, detail=f"Broker {broker_name} rejected the order or is disconnected.")
+
+async def get_broker_profile(db, user_id: str, broker_name: str) -> Optional[Dict]:
+    if broker_name.lower() == "aliceblue":
+        from services.brokers.aliceblue_client import get_user_aliceblue_client
+        client = await get_user_aliceblue_client(db, user_id)
+        if client:
+            return client.get_profile()
+    elif broker_name.lower() == "mock":
+        return {
+            "accountName": "Demo Admin Trader",
+            "accountId": "MOCK-9988",
+            "accountStatus": "Activated (Mock)",
+            "exchEnabled": "NSE, BSE, MCX",
+            "sBrokerName": "Mock Simulation"
+        }
+    return None
+
+async def get_broker_funds(db, user_id: str, broker_name: str) -> Optional[Dict]:
+    if broker_name.lower() == "aliceblue":
+        from services.brokers.aliceblue_client import get_user_aliceblue_client
+        client = await get_user_aliceblue_client(db, user_id)
+        if client:
+            return client.get_funds()
+    elif broker_name.lower() == "mock":
+        return [{
+            "cashmarginavailable": "250000.00",
+            "spanmargin": "12500.50",
+            "rmsPayInAmnt": "262500.50"
+        }]
+    return None

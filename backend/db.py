@@ -158,15 +158,20 @@ class InMemoryDatabase:
 
 if USE_IN_MEMORY_DB:
     db = InMemoryDatabase()
+    sync_db = db
 else:
     try:
-        # Use a sync pymongo client for a quick connection check before instantiating Motor.
-        with MongoClient(MONGO_URL, serverSelectionTimeoutMS=2000) as sync_client:
-            sync_client.admin.command("ping")
-        _client = AsyncIOMotorClient(MONGO_URL, serverSelectionTimeoutMS=2000)
+        # Check connection. If this fails, we want it to raise an error rather than silently falling back to memory.
+        _sync_client = MongoClient(MONGO_URL, serverSelectionTimeoutMS=5000)
+        _sync_client.admin.command("ping")
+        sync_db = _sync_client[DB_NAME]
+        
+        _client = AsyncIOMotorClient(MONGO_URL, serverSelectionTimeoutMS=5000)
         db = _client[DB_NAME]
-    except PyMongoError:
-        db = InMemoryDatabase()
+    except PyMongoError as e:
+        print(f"CRITICAL: Failed to connect to MongoDB at {MONGO_URL}: {e}")
+        # We don't fall back to memory silently. That causes data loss/reappearance bugs!
+        raise e
 
 
 def _to_str(v: Any) -> str:

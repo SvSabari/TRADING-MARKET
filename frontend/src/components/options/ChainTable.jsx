@@ -1,6 +1,6 @@
 import { fmtInt, fmtNum } from "@/lib/format";
 
-export default function ChainTable({ chain }) {
+export default function ChainTable({ chain, strategyMode = false, onAddLeg }) {
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-xs">
@@ -49,9 +49,25 @@ export default function ChainTable({ chain }) {
                   )}
                 </td>
                 <td className={`py-2 px-3 text-right text-[10px] uppercase tracking-wider ${trendColor(r.ce_trend)}`}>{formatTrend(r.ce_trend)}</td>
-                <td className="py-2 px-3 text-right num">{fmtNum(r.ce_ltp)}</td>
+                <td className="py-2 px-3 text-right num group relative">
+                  <span className={strategyMode ? "group-hover:opacity-0" : ""}>{fmtNum(r.ce_ltp)}</span>
+                  {strategyMode && (
+                    <div className="absolute inset-0 flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 pr-2">
+                      <button onClick={() => onAddLeg({ type: 'CE', side: 'Buy', strike: r.strike, premium: r.ce_ltp })} className="text-[10px] bg-green-500 text-white px-1.5 py-0.5 rounded">B</button>
+                      <button onClick={() => onAddLeg({ type: 'CE', side: 'Sell', strike: r.strike, premium: r.ce_ltp })} className="text-[10px] bg-red-500 text-white px-1.5 py-0.5 rounded">S</button>
+                    </div>
+                  )}
+                </td>
                 <td className={`py-2 px-3 text-center num ${atm ? "buy" : ""}`}>{r.strike}</td>
-                <td className="py-2 px-3 text-left num">{fmtNum(r.pe_ltp)}</td>
+                <td className="py-2 px-3 text-left num group relative">
+                  <span className={strategyMode ? "group-hover:opacity-0" : ""}>{fmtNum(r.pe_ltp)}</span>
+                  {strategyMode && (
+                    <div className="absolute inset-0 flex items-center justify-start gap-1 opacity-0 group-hover:opacity-100 pl-2">
+                      <button onClick={() => onAddLeg({ type: 'PE', side: 'Buy', strike: r.strike, premium: r.pe_ltp })} className="text-[10px] bg-green-500 text-white px-1.5 py-0.5 rounded">B</button>
+                      <button onClick={() => onAddLeg({ type: 'PE', side: 'Sell', strike: r.strike, premium: r.pe_ltp })} className="text-[10px] bg-red-500 text-white px-1.5 py-0.5 rounded">S</button>
+                    </div>
+                  )}
+                </td>
                 <td className={`py-2 px-3 text-left text-[10px] uppercase tracking-wider ${trendColor(r.pe_trend)}`}>{formatTrend(r.pe_trend)}</td>
                 <td className="py-2 px-3 text-left">
                   <div className="num">{r.pe_change_oi > 0 ? "+" : ""}{fmtInt(r.pe_change_oi)}</div>

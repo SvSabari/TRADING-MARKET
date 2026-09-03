@@ -23,7 +23,7 @@ export default function Orders() {
   };
   useEffect(() => {
     load();
-    const i = setInterval(load, 3000);
+    const i = setInterval(load, 10000);
     return () => clearInterval(i);
   }, []);
   useEffect(() => {

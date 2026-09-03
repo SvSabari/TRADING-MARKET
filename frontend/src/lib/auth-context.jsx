@@ -38,6 +38,17 @@ export function AuthProvider({ children }) {
     }
   };
 
+  const userLogin = async (phone, password) => {
+    try {
+      const { data } = await api.post("/auth/user-login", { phone, password });
+      localStorage.setItem("token", data.access_token);
+      setUser(data.user);
+      return data.user;
+    } catch (error) {
+      throw error;
+    }
+  };
+
   const register = async (email, name, password) => {
     const { data } = await api.post("/auth/register", { email, name, password });
     localStorage.setItem("token", data.access_token);
@@ -60,8 +71,11 @@ export function AuthProvider({ children }) {
     window.location.href = "/login";
   };
 
+  const isTrader = user?.role === "trader" || (!user?.role);
+  const isManagedUser = user?.role === "managed_user";
+
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, userLogin, register, logout, isTrader, isManagedUser }}>
       {children}
     </AuthContext.Provider>
   );

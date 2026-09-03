@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { api, API } from "@/lib/api";
+import { api } from "@/lib/api";
 import { fmtBytes, fmtDateTime, fmtInt, fmtNum } from "@/lib/format";
 import Panel from "@/components/Panel";
 import StatTile from "@/components/StatTile";
@@ -38,7 +38,7 @@ export default function ParquetData() {
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', f.filename || `${f.symbol}.parquet`);
+      link.setAttribute('download', f.filename || `${f.symbol}.csv`);
       document.body.appendChild(link);
       link.click();
       link.parentNode.removeChild(link);

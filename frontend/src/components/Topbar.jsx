@@ -4,12 +4,22 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { fmtNum, fmtPct } from "@/lib/format";
 import { Bell, SignOut, User } from "@phosphor-icons/react";
+import { getMarketStatus } from "@/lib/marketHours";
 
 export default function Topbar() {
   const { user, logout } = useAuth();
   const [ticks, setTicks] = useState([]);
   const [prevPrices, setPrevPrices] = useState({});
   const [unread, setUnread] = useState(0);
+  const [mktStatus, setMktStatus] = useState(getMarketStatus());
+
+  useEffect(() => {
+    const tick = () => setMktStatus(getMarketStatus());
+    tick();
+    const i = setInterval(tick, 30000); // recheck every 30s
+    return () => clearInterval(i);
+  }, []);
+
   useEffect(() => {
     let cancel = false;
     const fetchSnap = async () => {
@@ -41,8 +51,10 @@ export default function Topbar() {
   return (
     <div className="flex-1 flex items-center gap-6 min-w-0" data-testid="topbar">
       <div className="flex items-center gap-2 shrink-0">
-        <span className="dot dot-live"></span>
-        <span className="mono text-xs dim uppercase tracking-widest">live · {new Date().toLocaleDateString("en-IN")}</span>
+        <span className="dot" style={{ background: mktStatus.color }}></span>
+        <span className="mono text-xs dim uppercase tracking-widest" style={{ color: mktStatus.open ? undefined : mktStatus.color }}>
+          {mktStatus.label} · {new Date().toLocaleDateString("en-IN")}
+        </span>
       </div>
       <div className="ticker-row flex-1 overflow-hidden" data-testid="ticker-row">
         {ticks.map((t) => {

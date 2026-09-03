@@ -21,7 +21,6 @@ def _recent(symbol: str, n: int = 60) -> List[dict]:
 
 def detect_signals() -> List[Dict]:
     out: List[Dict] = []
-    now_iso = datetime.now(timezone.utc).isoformat()
     for s in ALL_SYMBOLS:
         h = _recent(s, 60)
         if len(h) < 20:
@@ -37,21 +36,27 @@ def detect_signals() -> List[Dict]:
         z = (last - statistics.mean(prices)) / std_p
         kind = None
         confidence = 0.5
-        if change > 0.05 and last_vol > avg_vol * 1.5:
+        
+        # Calculate a deterministic data-driven confidence boost based on volume and volatility
+        vol_boost = min(0.15, (last_vol / avg_vol) * 0.05) if avg_vol > 0 else 0
+        z_boost = min(0.15, abs(z) * 0.05)
+        
+        if change > 0.05 and last_vol > avg_vol * 1.2:
             kind = "long_buildup"
-            confidence = min(0.95, 0.6 + change)
-        elif change < -0.05 and last_vol > avg_vol * 1.5:
+            confidence = min(0.98, 0.6 + abs(change) + vol_boost + z_boost)
+        elif change < -0.05 and last_vol > avg_vol * 1.2:
             kind = "short_buildup"
-            confidence = min(0.95, 0.6 + abs(change))
+            confidence = min(0.98, 0.6 + abs(change) + vol_boost + z_boost)
         elif abs(z) > 1.8 and abs(change) > 0.02:
             kind = "breakout" if z > 0 else "breakdown"
-            confidence = min(0.95, 0.55 + abs(z) / 10)
-        elif change > 0.04 and avg_vol > 2 and last_vol < avg_vol * 0.6:
+            confidence = min(0.98, 0.55 + abs(z) / 10 + vol_boost)
+        elif change > 0.04 and avg_vol > 2 and last_vol <= avg_vol * 0.4:
             kind = "bull_trap"
-            confidence = 0.65
-        elif change < -0.04 and avg_vol > 2 and last_vol < avg_vol * 0.6:
+            confidence = min(0.95, 0.60 + z_boost)
+        elif change < -0.04 and avg_vol > 2 and last_vol <= avg_vol * 0.4:
             kind = "bear_trap"
-            confidence = 0.65
+            confidence = min(0.95, 0.60 + z_boost)
+            
         if kind:
             safe_avg_vol = avg_vol if avg_vol > 0 else 1
             out.append({
@@ -61,7 +66,7 @@ def detect_signals() -> List[Dict]:
                 "change_pct": round(change, 3),
                 "volume_ratio": round(last_vol / safe_avg_vol, 2),
                 "confidence": round(confidence, 2),
-                "ts": now_iso,
+                "ts": h[-1]["ts"], # Use the actual timestamp of the last tick
             })
     # sort by confidence desc
     out.sort(key=lambda x: x["confidence"], reverse=True)

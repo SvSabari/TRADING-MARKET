@@ -1,13 +1,22 @@
 import { useEffect, useState, useRef } from "react";
 import { api } from "@/lib/api";
 import { fmtInt } from "@/lib/format";
+import { getMarketStatus } from "@/lib/marketHours";
 
 export default function StatusBar() {
   const [stats, setStats] = useState(null);
   const [health, setHealth] = useState(null);
   const [feed, setFeed] = useState(null);
   const [showLive, setShowLive] = useState(false);
+  const [mktStatus, setMktStatus] = useState(getMarketStatus());
   const popupRef = useRef(null);
+
+  useEffect(() => {
+    const tick = () => setMktStatus(getMarketStatus());
+    tick();
+    const i = setInterval(tick, 30000);
+    return () => clearInterval(i);
+  }, []);
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -88,6 +97,14 @@ export default function StatusBar() {
         <span>LAST FLUSH: {stats?.last_flush ? new Date(stats.last_flush).toLocaleTimeString("en-IN", { hour12: false }) : "—"}</span>
       </div>
       <div className="flex items-center gap-4">
+        {!mktStatus.open && (
+          <span
+            className="font-bold mono uppercase tracking-widest text-[10px] px-2 py-0.5 rounded"
+            style={{ background: "rgba(239,68,68,0.12)", color: mktStatus.color, border: `1px solid ${mktStatus.color}40` }}
+          >
+            ● {mktStatus.label} · LAST PRICES SHOWN
+          </span>
+        )}
         <span className="dim">ALL SYMBOLS · 56</span>
         <span className="dim">{new Date().toLocaleTimeString("en-IN", { hour12: false })} IST</span>
       </div>

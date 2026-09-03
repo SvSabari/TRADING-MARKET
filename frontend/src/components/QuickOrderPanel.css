@@ -162,9 +162,38 @@
   box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
 }
 
-.place-order-btn:disabled {
-  opacity: 0.5;
+.place-order-btn:disabled,
+.check-margin-btn:disabled {
+  opacity: 0.7;
   cursor: not-allowed;
+}
+
+.margin-details {
+  background: var(--bg-hover, #f8fafc);
+  border-radius: 0.375rem;
+  padding: 0.75rem 1rem;
+  margin-top: 1rem;
+  border: 1px solid var(--border);
+  font-size: 0.875rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.margin-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.margin-label {
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.margin-value {
+  font-weight: 700;
+  color: var(--text-primary);
 }
 
 /* Scrollbar styling for order form */

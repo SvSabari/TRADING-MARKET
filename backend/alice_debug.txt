@@ -1,0 +1,1 @@
+Aliceblue chain returning None: spot is 0.0

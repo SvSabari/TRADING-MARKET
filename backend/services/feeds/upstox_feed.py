@@ -35,7 +35,11 @@ class UpstoxFeed(LiveFeed):
             mff = ff.get("marketFF") or ff.get("indexFF") or {}
             ltpc = mff.get("ltpc") or {}
             ltp = float(ltpc.get("ltp") or 0)
-            cum_vol = int(mff.get("vtt") or 0)
+            vol_val = mff.get("vtt") or 0
+            try:
+                cum_vol = int(vol_val)
+            except (ValueError, TypeError):
+                cum_vol = 0
             prev = self._last_cum_volume.get(instr_key, cum_vol)
             delta = max(0, cum_vol - prev)
             self._last_cum_volume[instr_key] = cum_vol

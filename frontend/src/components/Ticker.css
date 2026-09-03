@@ -15,7 +15,7 @@
 .ticker-scroll {
   display: flex;
   gap: 2rem;
-  animation: scroll-left 240s linear infinite;
+  animation: scroll-left 480s linear infinite;
   width: fit-content;
 }
 
@@ -45,20 +45,17 @@
   font-weight: 600;
   color: var(--text-primary);
   font-size: 0.875rem;
-  min-width: 80px;
 }
 
 .ticker-price {
   color: var(--text-secondary);
   font-weight: 500;
   font-size: 0.875rem;
-  min-width: 80px;
 }
 
 .ticker-change {
   font-weight: 600;
   font-size: 0.875rem;
-  min-width: 70px;
   text-align: right;
 }
 

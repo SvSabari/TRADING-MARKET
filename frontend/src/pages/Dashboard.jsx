@@ -9,15 +9,24 @@ import StatTile from "@/components/StatTile";
 import LivePriceChart from "@/components/charts/LivePriceChart";
 import MoversTable from "@/components/MoversTable";
 import SignalsFeed from "@/components/SignalsFeed";
+import { useSymbol } from "@/lib/symbol-context";
 
 export default function Dashboard() {
   const { data: snap } = usePolling("/market/snapshot", { intervalMs: 2000 });
   const { data: pnl } = usePolling("/orders/pnl-summary", { intervalMs: 2000 });
   const { data: sig } = usePolling("/signals/live", { intervalMs: 2000 });
   const { data: parquet } = usePolling("/parquet/status", { intervalMs: 2000 });
+  const { data: fundsData } = usePolling("/brokers/funds", { intervalMs: 10000 });
 
   const [chartSym, setChartSym] = useState("RELIANCE");
   const [history, setHistory] = useState([]);
+  const { setGlobalSymbol } = useSymbol();
+
+  useEffect(() => {
+    if (chartSym) {
+      setGlobalSymbol(chartSym);
+    }
+  }, [chartSym, setGlobalSymbol]);
 
   useEffect(() => {
     let cancelled = false;
@@ -37,9 +46,13 @@ export default function Dashboard() {
   const gainers = [...ticks].sort((a, b) => b.change_pct - a.change_pct).slice(0, 6);
   const losers = [...ticks].sort((a, b) => a.change_pct - b.change_pct).slice(0, 6);
 
+  const funds = Array.isArray(fundsData?.funds) ? fundsData.funds[0] : fundsData?.funds;
+
   return (
     <div className="space-y-4" data-testid="dashboard-page">
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+        <StatTile label="Available Cash" value={fmtRupee(funds?.cashmarginavailable || funds?.cash || funds?.net || 0)} testid="funds-cash" />
+        <StatTile label="Used Margin" value={fmtRupee(funds?.spanmargin || funds?.marginUsed || funds?.utilised || 0)} testid="funds-margin" />
         <StatTile label="Total P&L" value={fmtRupee(pnl?.total_pnl || 0)}
           accent={(pnl?.total_pnl || 0) >= 0 ? "buy" : "sell"} big testid="pnl-total" />
         <StatTile label="Unrealized" value={fmtRupee(pnl?.unrealized_pnl || 0)}

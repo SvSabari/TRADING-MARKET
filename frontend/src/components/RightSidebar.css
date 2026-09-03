@@ -73,7 +73,7 @@
 }
 
 .right-sidebar {
-  width: 350px;
+  width: 100%;
   background: var(--surface);
   border-left: 1px solid var(--border);
   display: flex;

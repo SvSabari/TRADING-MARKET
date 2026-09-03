@@ -3,7 +3,7 @@ import os
 from datetime import datetime, timezone
 from typing import Any, Dict
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Body
 from fastapi.responses import RedirectResponse
 
 from auth import get_current_user
@@ -74,30 +74,35 @@ async def upsert(body: BrokerConnectionUpsert, user: User = Depends(get_current_
     connected = bool(api_key_enc or any(merged_creds.values())) or body.mock_mode
     
     # Enforce exclusivity: if this broker is set to be the data feed, un-set all others
-    if body.is_data_feed:
+    if body.is_data_feed is True:
         await db.broker_connections.update_many(
             {"user_id": user.id, "broker": {"$ne": body.broker}},
             {"$set": {"is_data_feed": False}}
         )
     # Same for order execution
-    if body.is_order_exec:
+    if body.is_order_exec is True:
         await db.broker_connections.update_many(
             {"user_id": user.id, "broker": {"$ne": body.broker}},
             {"$set": {"is_order_exec": False}}
         )
 
     if existing:
+        update_doc = {
+            "api_key": api_key_enc,
+            "api_secret": api_secret_enc,
+            "credentials": merged_creds,
+            "connected": connected,
+        }
+        if body.is_data_feed is not None:
+            update_doc["is_data_feed"] = body.is_data_feed
+        if body.is_order_exec is not None:
+            update_doc["is_order_exec"] = body.is_order_exec
+        if body.mock_mode is not None:
+            update_doc["mock_mode"] = body.mock_mode
+
         await db.broker_connections.update_one(
             {"_id": existing["_id"]},
-            {"$set": {
-                "api_key": api_key_enc,
-                "api_secret": api_secret_enc,
-                "credentials": merged_creds,
-                "is_data_feed": body.is_data_feed,
-                "is_order_exec": body.is_order_exec,
-                "mock_mode": body.mock_mode,
-                "connected": connected,
-            }},
+            {"$set": update_doc},
         )
         from services.live_feed_manager import live_feed_manager
         await live_feed_manager.force_reconnect()
@@ -107,9 +112,9 @@ async def upsert(body: BrokerConnectionUpsert, user: User = Depends(get_current_
         user_id=user.id, broker=body.broker,
         api_key=api_key_enc, api_secret=api_secret_enc,
         credentials=merged_creds,
-        is_data_feed=body.is_data_feed,
-        is_order_exec=body.is_order_exec,
-        mock_mode=body.mock_mode, connected=connected,
+        is_data_feed=body.is_data_feed if body.is_data_feed is not None else False,
+        is_order_exec=body.is_order_exec if body.is_order_exec is not None else False,
+        mock_mode=body.mock_mode if body.mock_mode is not None else True, connected=connected,
     )
     await db.broker_connections.insert_one(conn.to_mongo())
     from services.live_feed_manager import live_feed_manager
@@ -125,6 +130,7 @@ async def disconnect(broker: str, user: User = Depends(get_current_user)):
         
     was_primary = doc.get("is_data_feed", False)
     was_secondary = doc.get("is_order_exec", False)
+
     
     res = await db.broker_connections.delete_one({"_id": doc["_id"]})
     
@@ -337,51 +343,119 @@ async def aliceblue_login_url(user: User = Depends(get_current_user)):
 
 
 @router.get("/aliceblue/callback")
-async def aliceblue_callback(authCode: str = Query(...), userId: str = Query(...)):
+async def aliceblue_callback(
+    authCode: str = Query(...),
+    userId: str = Query(...),
+    appcode: str = Query(default=""),
+):
     import httpx
     import hashlib
-    # Find the user's connection by userId (since state is not passed in the URL by Aliceblue)
-    # We will search across all connections to find one matching this userId.
+    import os
+
+    print(f"[AliceBlue Callback] userId={userId} authCode={authCode[:8]}... appcode={appcode}")
+
     doc = None
+    is_trader = True
+    api_key_dec = ""
+    api_secret = ""
+
+    # --- Trader lookup: prefer appcode (api_key) match, fallback to userId ---
     async for conn in db.broker_connections.find({"broker": "aliceblue"}):
         creds = conn.get("credentials") or {}
-        if decrypt_str(creds.get("user_id", "")) == userId:
+        conn_api_key = decrypt_str(creds.get("api_key", ""))
+        conn_user_id = decrypt_str(creds.get("user_id", ""))
+        # Match by appcode (api_key) if provided, otherwise match by userId
+        if appcode and conn_api_key == appcode:
             doc = conn
+            api_key_dec = conn_api_key
+            api_secret = decrypt_str(creds.get("api_secret", ""))
             break
-    
+        elif not appcode and conn_user_id == userId:
+            doc = conn
+            api_key_dec = conn_api_key
+            api_secret = decrypt_str(creds.get("api_secret", ""))
+            break
+
+    matched_mu_b = None
+    matched_idx = -1
     if not doc:
-        raise HTTPException(status_code=404, detail="No Alice Blue connection record found for this userId.")
-        
-    creds = doc.get("credentials") or {}
-    api_secret = decrypt_str(creds.get("api_secret", ""))
-    
-    # Checksum: userId + authCode + apiSecret
+        is_trader = False
+        async for mu in db.managed_users.find():
+            brokers = mu.get("brokers", [])
+            for idx, b in enumerate(brokers):
+                if "alice" in b.get("broker", "").lower():
+                    creds = b.get("credentials") or {}
+                    b_api_key = creds.get("api_key", b.get("api_key", ""))
+                    b_user_id = creds.get("user_id") or creds.get("client_code") or b.get("account_number", "")
+                    if (appcode and b_api_key == appcode) or (not appcode and b_user_id == userId):
+                        doc = mu
+                        matched_mu_b = b
+                        matched_idx = idx
+                        api_secret = creds.get("api_secret") or b.get("api_secret", "")
+                        break
+            if doc:
+                break
+
+    if not doc:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No Alice Blue connection found. userId={userId} appcode={appcode}. Please check that the API Key / App Code saved in Brokers matches what Alice Blue is using."
+        )
+
+    if not api_secret:
+        raise HTTPException(
+            status_code=400,
+            detail="Alice Blue API Secret is missing or empty. Please re-save your broker credentials with the correct API Secret."
+        )
+
     raw_str = f"{userId.strip()}{authCode.strip()}{api_secret.strip()}"
-    checksum = hashlib.sha256(raw_str.encode('utf-8')).hexdigest()
-    
+    checksum = hashlib.sha256(raw_str.encode("utf-8")).hexdigest()
+    print(f"[AliceBlue Callback] Checksum computed. userId={userId}, secret_len={len(api_secret)}")
+
     async with httpx.AsyncClient(timeout=15) as client:
         resp = await client.post(
             "https://a3.aliceblueonline.com/open-api/od/v1/vendor/getUserDetails",
             json={"checkSum": checksum}
         )
         if resp.status_code != 200:
-            raise HTTPException(status_code=400, detail=f"Alice Blue token exchange failed: {resp.text[:200]}")
+            raise HTTPException(status_code=400, detail=f"Alice Blue token exchange failed: {resp.text[:300]}")
         data = resp.json()
-        
+
     if data.get("stat") != "Ok":
-        raise HTTPException(status_code=400, detail=f"Alice Blue error: {data.get('emsg', 'Unknown')}")
-        
+        emsg = data.get("emsg", "Unknown")
+        print(f"[AliceBlue Callback] Error from Alice Blue: {emsg}. Raw: {data}")
+        raise HTTPException(
+            status_code=400,
+            detail=f"Alice Blue authentication failed: {emsg}. Please ensure your API Secret in Brokers settings is correct."
+        )
+
     userSession = data.get("userSession") or data.get("sessionID")
     if not userSession:
-        raise HTTPException(status_code=400, detail=f"Alice Blue returned no userSession. Raw data: {data}")
-        
+        raise HTTPException(status_code=400, detail=f"Alice Blue returned no userSession. Raw: {data}")
+
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    await db.broker_connections.update_one(
-        {"_id": doc["_id"]},
-        {"$set": {"access_token": encrypt_str(userSession),
-                  "session_date": today, "mock_mode": False, "connected": True}},
-    )
-    return RedirectResponse(url=f"{APP_BASE_URL}/brokers?aliceblue=connected", status_code=302)
+    APP_BASE_URL = os.getenv("APP_BASE_URL", "http://localhost:3000")
+
+    if is_trader:
+        await db.broker_connections.update_one(
+            {"_id": doc["_id"]},
+            {"$set": {"access_token": encrypt_str(userSession),
+                      "session_date": today, "mock_mode": False, "connected": True}},
+        )
+        print(f"[AliceBlue Callback] Trader session saved for userId={userId}")
+        return RedirectResponse(url=f"{APP_BASE_URL}/brokers?aliceblue=connected", status_code=302)
+    else:
+        brokers = doc.get("brokers", [])
+        brokers[matched_idx]["session_token"] = userSession
+        brokers[matched_idx]["session_generated"] = True
+        brokers[matched_idx]["session_date"] = today
+        await db.managed_users.update_one(
+            {"_id": doc["_id"]},
+            {"$set": {"brokers": brokers}}
+        )
+        print(f"[AliceBlue Callback] Managed user session saved for userId={userId}")
+        return RedirectResponse(url=f"{APP_BASE_URL}/user-dashboard?aliceblue=connected", status_code=302)
+
 @router.post("/aliceblue/login")
 async def aliceblue_login_programmatic(user: User = Depends(get_current_user)):
     """Trigger Alice Blue programmatic login bypassing the web redirect."""
@@ -415,3 +489,287 @@ async def aliceblue_login_programmatic(user: User = Depends(get_current_user)):
     from services.live_feed_manager import live_feed_manager
     await live_feed_manager.force_reconnect()
     return {"ok": True, "session_date": today}
+
+
+# ---------- Alice Blue Order Management APIs ----------
+
+async def _get_aliceblue_client(user: User) -> "AliceBlueClient":
+    from services.brokers.aliceblue_client import get_user_aliceblue_client
+    client = await get_user_aliceblue_client(db, user.id)
+    if not client:
+        raise HTTPException(status_code=400, detail="Alice Blue broker not configured or session expired")
+    return client
+
+@router.get("/aliceblue/orders")
+async def get_aliceblue_orders(user: User = Depends(get_current_user)):
+    client = await _get_aliceblue_client(user)
+    try:
+        return client.get_order_book()
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.get("/aliceblue/orders/{brokerOrderId}/history")
+async def get_aliceblue_order_history(brokerOrderId: str, user: User = Depends(get_current_user)):
+    client = await _get_aliceblue_client(user)
+    try:
+        return client.get_order_history(brokerOrderId)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.put("/aliceblue/orders/{brokerOrderId}")
+async def modify_aliceblue_order(brokerOrderId: str, payload: dict, user: User = Depends(get_current_user)):
+    client = await _get_aliceblue_client(user)
+    try:
+        return client.modify_order(
+            broker_order_id=brokerOrderId,
+            transaction_type=payload.get("transactionType", "BUY"),
+            instrument_token=payload.get("instrumentToken", ""),
+            product=payload.get("product", "I"),
+            order_type=payload.get("orderType", "MARKET"),
+            quantity=int(payload.get("quantity", 0)),
+            price=float(payload.get("price", 0.0)),
+            trigger_price=float(payload.get("triggerPrice", 0.0))
+        )
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.delete("/aliceblue/orders/{brokerOrderId}")
+async def cancel_aliceblue_order(brokerOrderId: str, user: User = Depends(get_current_user)):
+    client = await _get_aliceblue_client(user)
+    try:
+        return client.cancel_order(brokerOrderId)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.get("/aliceblue/trades")
+async def get_aliceblue_trade_book(user: User = Depends(get_current_user)):
+    client = await _get_aliceblue_client(user)
+    try:
+        return client.get_trade_book()
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.post("/aliceblue/margin")
+async def get_aliceblue_basket_margin(orders: list = Body(...), user: User = Depends(get_current_user)):
+    client = await _get_aliceblue_client(user)
+    try:
+        return client.get_basket_margin(orders)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.post("/aliceblue/orders/{brokerOrderId}/exit-bo")
+async def exit_aliceblue_bracket_order(brokerOrderId: str, payload: dict, user: User = Depends(get_current_user)):
+    client = await _get_aliceblue_client(user)
+    try:
+        return client.exit_bracket_order(
+            broker_order_id=brokerOrderId,
+            symbol_order_id=payload.get("symbolOrderId", "NA"),
+            status=payload.get("status", "open")
+        )
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.get("/profile")
+async def get_profile(user_id: str = None, user: User = Depends(get_current_user)):
+    target_user_id = user_id if user_id else user.id
+    
+    if user.role == "managed_user" or target_user_id != user.id:
+        if target_user_id != user.id:
+            managed = await db.managed_users.find_one({"_id": target_user_id, "trader_id": user.id})
+            if not managed:
+                raise HTTPException(403, "Not authorized to view this user")
+        else:
+            managed = await db.managed_users.find_one({"_id": target_user_id})
+            
+        if managed:
+            alice_broker = next((b for b in managed.get("brokers", []) if "alice" in b.get("broker", "").lower()), None)
+            if alice_broker and alice_broker.get("session_token"):
+                from pya3 import Aliceblue
+                creds = alice_broker.get("credentials") or {}
+                user_id_val = creds.get("user_id") or alice_broker.get("account_number")
+                api_key = creds.get("api_key") or alice_broker.get("api_key")
+                client = Aliceblue(user_id=user_id_val, api_key=api_key, session_id=alice_broker.get("session_token"))
+                try:
+                    return {"broker": "aliceblue", "profile": client.get_profile()}
+                except Exception as e:
+                    return {"error": str(e)}
+            
+            breeze_broker = next((b for b in managed.get("brokers", []) if "icici" in b.get("broker", "").lower()), None)
+            if breeze_broker and breeze_broker.get("session_token"):
+                try:
+                    from services.brokers.breeze_client import BreezeClient
+                    creds = breeze_broker.get("credentials") or {}
+                    api_key = creds.get("api_key") or breeze_broker.get("api_key")
+                    secret_key = creds.get("api_secret") or breeze_broker.get("api_secret")
+                    session_token = breeze_broker.get("session_token")
+                    client = BreezeClient(api_key=api_key, secret_key=secret_key, session_token=session_token)
+                    if client._session_ok:
+                        return {"broker": "icici", "profile": client._b.get_customer_details()}
+                except Exception as e:
+                    return {"error": str(e)}
+                    
+        return {"error": "No broker configured or session token missing."}
+            
+    doc = await db.broker_connections.find_one({"user_id": target_user_id, "is_order_exec": True})
+    if not doc:
+        return {"error": "No execution broker configured."}
+        
+    from services.broker_router import get_broker_profile
+    profile = await get_broker_profile(db, target_user_id, doc["broker"])
+    return {"broker": doc["broker"], "profile": profile}
+
+@router.get("/funds")
+async def get_funds(user_id: str = None, user: User = Depends(get_current_user)):
+    target_user_id = user_id if user_id else user.id
+    
+    if user.role == "managed_user" or target_user_id != user.id:
+        if target_user_id != user.id:
+            managed = await db.managed_users.find_one({"_id": target_user_id, "trader_id": user.id})
+            if not managed:
+                raise HTTPException(403, "Not authorized to view this user")
+        else:
+            managed = await db.managed_users.find_one({"_id": target_user_id})
+            
+        if managed:
+            alice_broker = next((b for b in managed.get("brokers", []) if "alice" in b.get("broker", "").lower()), None)
+            if alice_broker and alice_broker.get("session_token"):
+                from pya3 import Aliceblue
+                creds = alice_broker.get("credentials") or {}
+                user_id_val = creds.get("user_id") or alice_broker.get("account_number")
+                api_key = creds.get("api_key") or alice_broker.get("api_key")
+                client = Aliceblue(user_id=user_id_val, api_key=api_key, session_id=alice_broker.get("session_token"))
+                try:
+                    return {"broker": "aliceblue", "funds": client.get_balance()}
+                except Exception as e:
+                    return {"error": str(e)}
+            
+            breeze_broker = next((b for b in managed.get("brokers", []) if "icici" in b.get("broker", "").lower()), None)
+            if breeze_broker and breeze_broker.get("session_token"):
+                try:
+                    from services.brokers.breeze_client import BreezeClient
+                    creds = breeze_broker.get("credentials") or {}
+                    api_key = creds.get("api_key") or breeze_broker.get("api_key")
+                    secret_key = creds.get("api_secret") or breeze_broker.get("api_secret")
+                    session_token = breeze_broker.get("session_token")
+                    client = BreezeClient(api_key=api_key, secret_key=secret_key, session_token=session_token)
+                    if client._session_ok:
+                        return {"broker": "icici", "funds": client._b.get_funds()}
+                except Exception as e:
+                    return {"error": str(e)}
+                    
+        return {"error": "No broker configured or session token missing."}
+            
+    doc = await db.broker_connections.find_one({"user_id": target_user_id, "is_order_exec": True})
+    if not doc:
+        return {"error": "No execution broker configured."}
+        
+    from services.broker_router import get_broker_funds
+    funds = await get_broker_funds(db, target_user_id, doc["broker"])
+    return {"broker": doc["broker"], "funds": funds}
+
+
+@router.get("/aliceblue/history/{symbol}")
+async def aliceblue_history(
+    symbol: str,
+    from_datetime: str = Query(...),
+    to_datetime: str = Query(...),
+    interval: str = Query("1"),
+    user: User = Depends(get_current_user)
+):
+    from services.brokers.aliceblue_client import get_user_aliceblue_client
+    import datetime
+
+    client = await get_user_aliceblue_client(db, user.id)
+    if not client:
+        # Check if they are a managed user
+        managed = await db.managed_users.find_one({"_id": user.id})
+        if managed:
+            alice_broker = next((b for b in managed.get("brokers", []) if "alice" in b.get("broker", "").lower()), None)
+            if alice_broker and alice_broker.get("session_token"):
+                from pya3 import Aliceblue
+                from services.brokers.aliceblue_client import AliceBlueClient
+                creds = alice_broker.get("credentials") or {}
+                user_id_val = creds.get("user_id") or alice_broker.get("account_number")
+                api_key = creds.get("api_key") or alice_broker.get("api_key")
+                client = AliceBlueClient(client_code=user_id_val, api_key=api_key, session_id=alice_broker.get("session_token"))
+        
+    if not client:
+        raise HTTPException(status_code=400, detail="Aliceblue client not connected.")
+        
+    try:
+        from_dt = datetime.datetime.fromisoformat(from_datetime.replace('Z', '+00:00'))
+        to_dt = datetime.datetime.fromisoformat(to_datetime.replace('Z', '+00:00'))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid datetime format. Use ISO format.")
+        
+    try:
+        # User provided API documentation:
+        # POST {{BASE_URL}}open-api/od/ChartAPIService/api/chart/history
+        # Body: { "token": "1594", "resolution": "1", "from": "1660128489000", "to": "1660221861000", "exchange": "NSE" }
+        import httpx
+        
+        # Determine exchange and token
+        if "|" in symbol:
+            exchange, token = symbol.split("|", 1)
+        else:
+            exchange, token = "NSE", symbol
+            
+        # Try to resolve symbol to token if it's not numeric
+        if not token.isdigit():
+            resolved = False
+            try:
+                # Try pya3's built-in resolution first
+                instrument = client._alice.get_instrument_by_symbol(exchange, f"{token}-EQ" if exchange == "NSE" and not token.endswith("-EQ") else token)
+                token = str(instrument.token)
+                resolved = True
+            except Exception:
+                pass
+                
+            # Fallback to reading the CSV directly (pya3 has a bug in some versions that throws 'module' object is not callable)
+            if not resolved:
+                import csv
+                import os
+                csv_path = os.path.join(os.getcwd(), f"{exchange}.csv")
+                if os.path.exists(csv_path):
+                    with open(csv_path, 'r', encoding='utf-8') as f:
+                        reader = csv.DictReader(f)
+                        target = f"{token}-EQ" if exchange == "NSE" and not token.endswith("-EQ") else token
+                        for row in reader:
+                            if row.get('Symbol') == token or row.get('Trading Symbol') == target:
+                                token = str(row.get('Token'))
+                                break
+
+        from_ts = str(int(from_dt.timestamp() * 1000))
+        to_ts = str(int(to_dt.timestamp() * 1000))
+        
+        payload = {
+            "token": token,
+            "resolution": interval,
+            "from": from_ts,
+            "to": to_ts,
+            "exchange": exchange
+        }
+
+        # Aliceblue base URL for history
+        url = "https://ant.aliceblueonline.com/rest/AliceBlueAPIService/api/chart/history"
+        headers = {
+            "X-SAS-Version": "2.0",
+            "Authorization": f"Bearer {client._alice.user_id} {client._alice.session_id}",
+            "Content-Type": "application/json"
+        }
+        
+        async with httpx.AsyncClient() as c:
+            resp = await c.post(url, headers=headers, json=payload)
+            
+            try:
+                data = resp.json()
+            except Exception:
+                raise HTTPException(status_code=400, detail=f"AliceBlue API failed (Status {resp.status_code}). Please try again after 5:30 PM.")
+                
+            if "stat" in data and data["stat"] == "Not_Ok":
+                raise HTTPException(status_code=400, detail=data.get("emsg", "Failed to load AliceBlue historical data"))
+                
+            return {"symbol": symbol, "rows": data.get("result", [])}
+            
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

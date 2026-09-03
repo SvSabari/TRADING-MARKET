@@ -18,12 +18,13 @@ DEMO_USER_ENABLED = os.environ.get("DEMO_USER_ENABLED", "false").strip().lower()
 
 from routers import (  # noqa: E402
     ai_routes, analytics_routes, auth_routes, broker_routes,
-    market_routes, notification_routes, order_routes, parquet_routes,
+    data_routes, managed_users_routes,
+    market_routes, notification_routes, order_routes,
     signals_routes, strategy_routes, tradingview_routes,
 )
 from auth import ensure_demo_user
 from services.market_data import tick_engine  # noqa: E402
-from services.parquet_capture import parquet_capture  # noqa: E402
+from services.market_data_capture import market_data_capture  # noqa: E402
 from services.strategy_scheduler import scheduler as strategy_scheduler  # noqa: E402
 from services.live_feed_manager import live_feed_manager  # noqa: E402
 from services.anomaly_sweep import anomaly_sweeper  # noqa: E402
@@ -47,9 +48,9 @@ logging.getLogger("WebsocketLogger").setLevel(logging.WARNING)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("Starting tick engine + parquet capture + strategy scheduler")
+    logger.info("Starting tick engine + market data capture + strategy scheduler")
     tick_engine.start()
-    parquet_capture.start()
+    market_data_capture.start()
     strategy_scheduler.start()
     live_feed_manager.start()
     anomaly_sweeper.start()
@@ -78,7 +79,7 @@ async def lifespan(app: FastAPI):
 
     logger.info("Shutting down background services...")
     tick_engine.stop()
-    parquet_capture.stop()
+    market_data_capture.stop()
     strategy_scheduler.stop()
     anomaly_sweeper.stop()
     options_sweeper.stop()
@@ -112,6 +113,7 @@ async def health():
 # Register routers — all under /api
 for r in (
     auth_routes.router,
+    managed_users_routes.router,
     market_routes.router,
     tradingview_routes.router,
     order_routes.router,
@@ -120,8 +122,12 @@ for r in (
     signals_routes.router,
     signals_routes.backtest_router,
     broker_routes.router,
-    parquet_routes.router,
+    data_routes.router,
     notification_routes.router,
     ai_routes.router,
 ):
     app.include_router(r, prefix="/api")
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("server:app", host="0.0.0.0", port=8001, reload=True)

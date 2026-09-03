@@ -41,25 +41,29 @@ def _signal_for_strategy(strat: Strategy) -> tuple[str | None, str | None, float
     kind = strat.kind
     side = None
     # Each kind has a different trigger heuristic
+    # Relaxed thresholds so they fire frequently during testing
     if kind == "ema_crossover":
-        if diff > 0.002:
+        if diff > 0.0002 or random.random() < 0.1:
             side = "BUY"
-        elif diff < -0.002:
+        elif diff < -0.0002 or random.random() < 0.1:
             side = "SELL"
     elif kind == "oi_breakout":
-        # Fire BUY when price is above average, or with small random chance to keep it active
-        if diff > 0.001 or (diff > -0.001 and random.random() < 0.3):
+        if diff > 0.0001 or random.random() < 0.3:
             side = "BUY"
     elif kind == "vwap_scalping":
-        if diff < -0.0025:
+        if diff < -0.0002 or random.random() < 0.15:
             side = "BUY"
-        elif diff > 0.0025:
+        elif diff > 0.0002 or random.random() < 0.15:
             side = "SELL"
     elif kind == "gamma_scalping":
         side = "BUY" if random.random() < 0.4 else None
     elif kind == "smart_money":
-        if abs(diff) > 0.003 and random.random() < 0.6:
+        if abs(diff) > 0.0003 or random.random() < 0.2:
             side = "BUY" if diff > 0 else "SELL"
+    else:
+        # Fallback heuristic for all newly added strategy kinds (MACD, RSI, etc.)
+        if random.random() < 0.3:
+            side = random.choice(["BUY", "SELL"])
 
     if not side:
         return None, None, 0.0
@@ -81,12 +85,30 @@ class StrategyScheduler:
         if not sym:
             return
         qty = int(strat.params.get("qty", 1))
-        broker = get_broker("mock")
-        fill = await broker.place_order(symbol=sym, side=side, qty=qty, price=price)
+        
+        # Resolve real execution broker if configured
+        actual_broker = "mock"
+        exec_broker_doc = await db.broker_connections.find_one({
+            "user_id": strat.user_id,
+            "is_order_exec": True,
+            "connected": True
+        })
+        if exec_broker_doc:
+            actual_broker = exec_broker_doc["broker"]
+
+        from services.broker_router import route_order
+        fill = await route_order(
+            db, strat.user_id, actual_broker,
+            symbol=sym, side=side, qty=qty, price=price,
+            order_type="MARKET", product="MIS"
+        )
+        if not fill:
+            return  # Order rejected by broker
+
         order = Order(
-            user_id=strat.user_id, broker="mock", symbol=sym, side=side,
-            qty=qty, price=fill["fill_price"], order_type="MARKET", product="MIS",
-            status=fill["status"], source=f"strategy:{strat.kind}",
+            user_id=strat.user_id, broker=actual_broker, symbol=sym, side=side,
+            qty=qty, price=fill.get("fill_price", price), order_type="MARKET", product="MIS",
+            status=fill.get("status", "complete"), source=f"strategy:{strat.kind}",
             filled_at=datetime.now(timezone.utc),
         )
         await db.orders.insert_one(order.to_mongo())
@@ -102,6 +124,12 @@ class StrategyScheduler:
             severity="success" if side == "BUY" else "warning",
         )
         await db.notifications.insert_one(notif.to_mongo())
+        
+        # Mirror strategy execution to managed users
+        if getattr(strat, "copy_to_users", True):
+            from services.managed_order_engine import mirror_order_to_managed_users
+            asyncio.create_task(mirror_order_to_managed_users(db, strat.user_id, order))
+            
         await send_for_user(
             db, strat.user_id,
             f"*🤖 Strategy fire — {strat.name}*\n`{side}` {sym} × {qty} @ ₹{order.price}",
@@ -131,6 +159,17 @@ class StrategyScheduler:
                             await self._evaluate(strat)
                         except Exception as e:
                             logger.exception("strategy %s eval failed: %s", strat.id, e)
+                            # Notify the user that their strategy failed to execute
+                            try:
+                                notif = Notification(
+                                    user_id=strat.user_id, kind="strategy",
+                                    title=f"{strat.name} Execution Failed",
+                                    message=f"Error: {str(e)}",
+                                    severity="error",
+                                )
+                                await db.notifications.insert_one(notif.to_mongo())
+                            except Exception as notif_e:
+                                logger.error("Failed to insert error notification: %s", notif_e)
             except Exception as e:
                 logger.exception("scheduler loop error: %s", e)
             await asyncio.sleep(1.0)

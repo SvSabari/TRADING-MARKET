@@ -53,6 +53,18 @@ async def mark_all_read(user: User = Depends(get_current_user)):
     return {"ok": True}
 
 
+@router.delete("/all")
+async def delete_all(user: User = Depends(get_current_user)):
+    await db.notifications.delete_many({"user_id": user.id})
+    return {"ok": True}
+
+
+@router.delete("/{notif_id}")
+async def delete_one(notif_id: str, user: User = Depends(get_current_user)):
+    await db.notifications.delete_one({"_id": notif_id, "user_id": user.id})
+    return {"ok": True}
+
+
 # ---- Telegram settings ----
 
 @router.get("/telegram")

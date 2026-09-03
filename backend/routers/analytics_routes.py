@@ -75,9 +75,9 @@ async def strike_greeks(strike: int, symbol: str = "NIFTY", user: User = Depends
 
 
 @router.get("/oi-heatmap")
-async def oi_heatmap_endpoint(symbol: str = "NIFTY", user: User = Depends(get_current_user)):
-    chain = await get_cached_or_build(symbol, user.id)
-    return {"spot": chain["spot"], "atm": chain["atm"], "data": oi_heatmap(chain), "source": chain.get("source", "offline")}
+async def oi_heatmap_endpoint(symbol: str = "NIFTY", expiry: str = None, user: User = Depends(get_current_user)):
+    chain = await get_cached_or_build(symbol, user.id, expiry)
+    return {"spot": chain["spot"], "atm": chain["atm"], "data": oi_heatmap(chain), "source": chain.get("source", "offline"), "expiry": chain.get("expiry")}
 
 
 @router.get("/iv-smile")

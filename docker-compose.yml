@@ -1,0 +1,63 @@
+version: '3.8'
+
+services:
+  mongodb:
+    image: mongo:6.0
+    container_name: trading_mongodb
+    restart: always
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - trading_network
+
+  backend:
+    build: 
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: trading_backend
+    restart: always
+    ports:
+      - "8001:8001"
+    depends_on:
+      - mongodb
+    environment:
+      # Use the container name 'mongodb' to connect from the backend
+      - MONGO_URL=mongodb://mongodb:27017
+      - DB_NAME=algo_trading_db
+      - CORS_ORIGINS=http://localhost:3000,http://localhost
+      # In production, ensure these are set securely:
+      # - JWT_SECRET=your_jwt_secret_key_here
+      # - ENCRYPTION_KEY=your_encryption_key_here
+      - PARQUET_DATA_DIR=/app/data/parquet
+    volumes:
+      # Persist the parquet data directory
+      - backend_data:/app/data
+    networks:
+      - trading_network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        # Note: In production, change this to your actual backend domain, e.g., https://api.mytradingapp.com
+        - REACT_APP_BACKEND_URL=http://localhost:8001
+    container_name: trading_frontend
+    restart: always
+    ports:
+      # Expose Nginx on port 3000
+      - "3000:80"
+    depends_on:
+      - backend
+    networks:
+      - trading_network
+
+volumes:
+  mongodb_data:
+  backend_data:
+
+networks:
+  trading_network:
+    driver: bridge

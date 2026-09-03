@@ -47,7 +47,13 @@ class AliceBlueClient:
         except ValueError:
             exchange, token = "NSE", instrument_token
             
-        instrument = self._alice.get_instrument_by_token(exchange, int(token))
+        try:
+            instrument = self._alice.get_instrument_by_token(exchange, int(token))
+        except ValueError:
+            # Token is not an int, meaning we fell back to passing the raw symbol string (e.g. RELIANCE)
+            # AliceBlue requires -EQ suffix for NSE stocks
+            sym = f"{token}-EQ" if exchange == "NSE" and "-EQ" not in token else token
+            instrument = self._alice.get_instrument_by_symbol(exchange, sym)
 
         resp = self._alice.place_order(
             transaction_type=t_type,
@@ -69,6 +75,18 @@ class AliceBlueClient:
         
         logger.error(f"Alice Blue order failed: {resp}")
         raise Exception(f"Alice Blue order rejected: {resp}")
+        
+    def __del__(self) -> None:
+        pass
+        
+    def get_profile(self) -> dict:
+        return self._alice.get_profile()
+        
+    def get_funds(self) -> dict:
+        return self._alice.get_balance()
+        
+    def get_order_book(self) -> dict:
+        return self._alice.order_data()
 
     def ltp(self, instrument_token: str) -> float:
         """Fallback LTP fetcher if not using websocket."""
@@ -82,6 +100,77 @@ class AliceBlueClient:
         if isinstance(resp, dict) and "LTP" in resp:
             return float(resp["LTP"])
         return 0.0
+
+    def get_order_history(self, broker_order_id: str) -> dict:
+        return self._alice.get_order_history(broker_order_id)
+
+    def modify_order(self, *, transaction_type: str, instrument_token: str, product: str, 
+                     broker_order_id: str, order_type: str, quantity: int, 
+                     price: float = 0.0, trigger_price: float = 0.0) -> dict:
+        
+        t_type = TransactionType.Buy if transaction_type.upper() == "BUY" else TransactionType.Sell
+        
+        o_type = OrderType.Market
+        if order_type.upper() == "LIMIT":
+            o_type = OrderType.Limit
+        elif order_type.upper() == "SL-M":
+            o_type = OrderType.StopLossMarket
+        elif order_type.upper() == "SL":
+            o_type = OrderType.StopLossLimit
+            
+        p_type = ProductType.Intraday if product.upper() == "I" else ProductType.Delivery
+        
+        try:
+            exchange, token = instrument_token.split("|")
+        except ValueError:
+            exchange, token = "NSE", instrument_token
+            
+        instrument = self._alice.get_instrument_by_token(exchange, int(token))
+        
+        return self._alice.modify_order(
+            transaction_type=t_type,
+            instrument=instrument,
+            product_type=p_type,
+            order_id=broker_order_id,
+            order_type=o_type,
+            quantity=int(quantity),
+            price=float(price),
+            trigger_price=float(trigger_price)
+        )
+
+    def cancel_order(self, broker_order_id: str) -> dict:
+        return self._alice.cancel_order(broker_order_id)
+
+    def get_trade_book(self) -> dict:
+        return self._alice.get_trade_book()
+
+    def get_basket_margin(self, orders: list) -> dict:
+        """
+        orders should be a list of dicts matching Aliceblue's required structure:
+        [{ "exchange": "NSE", "tradingSymbol": "TCS-EQ", "price": "3056.8", "qty": "1", 
+           "product": "CNC", "priceType": "L", "triggerPrice": "", "transType": "B" }]
+        """
+        return self._alice.basket_margin(orders)
+
+    def exit_bracket_order(self, broker_order_id: str, symbol_order_id: str = "NA", status: str = "open") -> dict:
+        """
+        Usually symbolOrderId is NA and status is open, depending on the response from order book.
+        """
+        return self._alice.exitboorder(broker_order_id, symbol_order_id, status)
+
+    def get_historical(self, instrument_token: str, from_datetime, to_datetime, interval: str = "1", indices: bool = False) -> dict:
+        try:
+            exchange, token = instrument_token.split("|")
+        except ValueError:
+            exchange, token = "NSE", instrument_token
+            
+        try:
+            instrument = self._alice.get_instrument_by_token(exchange, int(token))
+        except ValueError:
+            sym = f"{token}-EQ" if exchange == "NSE" and "-EQ" not in token else token
+            instrument = self._alice.get_instrument_by_symbol(exchange, sym)
+            
+        return self._alice.get_historical(instrument, from_datetime, to_datetime, interval, indices)
 
 async def get_user_aliceblue_client(db, user_id: str) -> Optional[AliceBlueClient]:
     doc = await db.broker_connections.find_one({

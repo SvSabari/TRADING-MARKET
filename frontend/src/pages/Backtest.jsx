@@ -7,7 +7,7 @@ import StatTile from "@/components/StatTile";
 import {
   ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, ReferenceLine, CartesianGrid
 } from "recharts";
-import { FlowArrow, TrendUp, TrendDown, Lightning, ChartBar, ArrowsClockwise } from "@phosphor-icons/react";
+import { FlowArrow, TrendUp, TrendDown, Lightning, ChartBar, ArrowsClockwise, Flask } from "@phosphor-icons/react";
 
 const CATEGORY_COLORS = {
   trend:     { bg: "rgba(59,130,246,0.10)", border: "#3b82f6", text: "#3b82f6", label: "TREND" },
@@ -129,6 +129,17 @@ export default function Backtest() {
     }
   };
 
+  const deleteRun = async (e, id) => {
+    e.stopPropagation();
+    try {
+      await api.delete(`/backtest/run/${id}`);
+      setHistory(history.filter(h => h.id !== id));
+      toast.success("Run deleted!");
+    } catch (err) {
+      toast.error(err?.response?.data?.detail || "Failed to delete");
+    }
+  };
+
   const selectedKind = kinds.find(k => k.id === form.strategy_kind);
   const m = result?.metrics || {};
   const trades = result?.trades_log || [];
@@ -138,7 +149,7 @@ export default function Backtest() {
   return (
     <div className="space-y-5" data-testid="backtest-page">
       <div>
-        <h1 style={{ fontFamily: "Outfit", fontWeight: 900, fontSize: 28, letterSpacing: "-0.02em" }}>🧪 Backtest Lab</h1>
+        <h1 style={{ fontFamily: "Outfit", fontWeight: 900, fontSize: 28, letterSpacing: "-0.02em", display: "flex", alignItems: "center", gap: "8px" }}><Flask weight="duotone" color="var(--brand)" size={32} />Backtest Lab</h1>
         <p className="dim text-sm mt-1">Test any strategy on real historical data before using real money. Like a time machine for trading.</p>
       </div>
 
@@ -233,7 +244,7 @@ export default function Backtest() {
                     <YAxis domain={["auto", "auto"]} tick={{ fill: "#555", fontSize: 9, fontFamily: "JetBrains Mono" }} stroke="#333" />
                     <ReferenceLine y={100000} stroke="#444" strokeDasharray="4 4" label={{ value: "Start ₹1L", fill: "#666", fontSize: 9 }} />
                     <Tooltip content={<CustomTooltip />} />
-                    <Line type="monotone" dataKey="equity"
+                    <Line type="linear" dataKey="equity"
                       stroke={m.total_return_pct >= 0 ? "#00E676" : "#ef4444"}
                       strokeWidth={2} dot={false} isAnimationActive={false} />
                   </LineChart>
@@ -276,17 +287,23 @@ export default function Backtest() {
             )}
 
             {activeTab === "sector" && sectorResult && (
-              <div style={{ overflowX: "auto", padding: "0 16px 16px 16px" }}>
+              <div style={{ overflowX: "auto", padding: "16px" }}>
+                <div style={{ marginBottom: "16px", fontWeight: "bold", fontSize: "14px", color: "var(--text-primary)" }}>
+                  Strategy: <span style={{ color: "var(--brand)" }}>{kinds.find(k => k.id === sectorResult.strategy_kind)?.name || sectorResult.strategy_kind}</span>
+                </div>
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="dim text-[10px] uppercase tracking-widest border-b border-[#222]">
                       <th className="text-left py-2 px-4">Sector</th>
                       <th className="text-right py-2 px-4">Accuracy (Win %)</th>
                       <th className="text-left py-2 px-4">Performance Indicator</th>
+                      <th className="text-left py-2 px-4">Stocks Used</th>
                     </tr>
                   </thead>
                   <tbody className="cell-divider">
-                    {Object.entries(sectorResult.sector_accuracy).map(([sector, winRate]) => {
+                    {Object.entries(sectorResult.sector_accuracy).map(([sector, data]) => {
+                      const winRate = typeof data === "number" ? data : data.win_rate;
+                      const symbols = typeof data === "number" ? [] : data.symbols;
                       const isGood = winRate >= 0.5;
                       const displayPct = `${fmtNum(winRate * 100, 2)}%`;
                       return (
@@ -299,6 +316,9 @@ export default function Backtest() {
                             <div style={{ width: "100%", maxWidth: "200px", height: "8px", background: "var(--bg)", borderRadius: "4px", overflow: "hidden" }}>
                               <div style={{ width: `${Math.min(winRate * 100, 100)}%`, height: "100%", background: isGood ? "var(--buy)" : "var(--sell)", transition: "width 0.5s ease" }} />
                             </div>
+                          </td>
+                          <td className="py-2 px-4 text-[10px] dim">
+                            {symbols.join(", ")}
                           </td>
                         </tr>
                       );
@@ -326,6 +346,7 @@ export default function Backtest() {
                 <th className="text-right py-2 px-4">Max DD</th>
                 <th className="text-right py-2 px-4">Win %</th>
                 <th className="text-right py-2 px-4">Trades</th>
+                <th className="text-center py-2 px-4">Actions</th>
               </tr>
             </thead>
             <tbody className="cell-divider">
@@ -345,9 +366,18 @@ export default function Backtest() {
                   <td className="py-2 px-4 text-right num sell">{fmtPct(-(h.metrics?.max_drawdown_pct || 0))}</td>
                   <td className="py-2 px-4 text-right num">{fmtPct(h.metrics?.win_rate_pct || 0)}</td>
                   <td className="py-2 px-4 text-right num dim">{h.metrics?.trades || 0}</td>
+                  <td className="py-2 px-4 text-center">
+                    <button 
+                      onClick={(e) => deleteRun(e, h.id)}
+                      className="text-red-500 hover:text-red-400 p-1 rounded hover:bg-[#333] transition-colors inline-block"
+                      title="Delete Run"
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                    </button>
+                  </td>
                 </tr>
               ))}
-              {history.length === 0 && <tr><td colSpan={8} className="p-8 text-center dim text-xs">No runs yet. Run your first backtest above!</td></tr>}
+              {history.length === 0 && <tr><td colSpan={9} className="p-8 text-center dim text-xs">No runs yet. Run your first backtest above!</td></tr>}
             </tbody>
           </table>
         </div>

@@ -8,7 +8,7 @@ import { Plus, Trash } from "@phosphor-icons/react";
 export default function Strategies() {
   const [kinds, setKinds] = useState([]);
   const [items, setItems] = useState([]);
-  const [form, setForm] = useState({ name: "", kind: "ema_crossover", symbols: "" });
+  const [form, setForm] = useState({ name: "", kind: "ema_crossover", symbols: "", copy_to_users: true });
   const [symbolsList, setSymbolsList] = useState([]);
   const [showSymbolDropdown, setShowSymbolDropdown] = useState(false);
 
@@ -31,6 +31,7 @@ export default function Strategies() {
     try {
       await api.post("/strategies", {
         name: form.name, kind: form.kind, enabled: false,
+        copy_to_users: form.copy_to_users,
         symbols: form.symbols.split(",").map((s) => s.trim().toUpperCase()).filter(Boolean),
         params: {
           interval_seconds: parseInt(form.interval_seconds) || 15,
@@ -106,7 +107,19 @@ export default function Strategies() {
           </div>
           <input className="terminal" type="number" min="5" placeholder="Interval (sec)" value={form.interval_seconds} data-testid="strategy-interval-input" onChange={(e) => setForm({ ...form, interval_seconds: e.target.value })} />
           <input className="terminal" type="number" min="1" placeholder="Quantity" value={form.qty} data-testid="strategy-qty-input" onChange={(e) => setForm({ ...form, qty: e.target.value })} />
-          <button className="btn btn-primary md:col-span-3 xl:col-span-6 justify-center mt-2 md:mt-0" data-testid="strategy-create-btn" onClick={create}><Plus size={14} weight="bold" /> Create</button>
+          <div className="md:col-span-3 xl:col-span-6 flex items-center gap-2 mt-2">
+            <input 
+              type="checkbox" 
+              id="stratCopyToUsers"
+              checked={form.copy_to_users}
+              onChange={(e) => setForm({ ...form, copy_to_users: e.target.checked })}
+              className="cursor-pointer"
+            />
+            <label htmlFor="stratCopyToUsers" className="text-xs dim cursor-pointer">
+              Mirror strategy trades to all managed users
+            </label>
+          </div>
+          <button className="btn btn-primary md:col-span-3 xl:col-span-6 justify-center mt-2" data-testid="strategy-create-btn" onClick={create}><Plus size={14} weight="bold" /> Create</button>
         </div>
       </Panel>
 

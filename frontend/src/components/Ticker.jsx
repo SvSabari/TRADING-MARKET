@@ -45,7 +45,7 @@ export default function Ticker() {
               <span className="ticker-symbol">{tick.symbol}</span>
               <span className="ticker-price">₹{tick.ltp.toFixed(2)}</span>
               <span className={`ticker-change ${tick.change_pct >= 0 ? "buy" : "sell"}`}>
-                {tick.change_pct >= 0 ? "+" : ""}{tick.change_pct.toFixed(2)}%
+                {tick.change_pct >= 0 ? "▲" : "▼"}{Math.abs(tick.change_pct).toFixed(2)}%
               </span>
             </div>
           ))}

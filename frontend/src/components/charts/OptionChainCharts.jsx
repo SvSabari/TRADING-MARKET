@@ -50,8 +50,8 @@ export function IVSmileChart({ data }) {
           <XAxis dataKey="strike" tick={X_TICK} stroke="#E8E0D5" />
           <YAxis tick={Y_TICK} stroke="#E8E0D5" />
           <Tooltip contentStyle={TIP_STYLE} />
-          <Line type="monotone" dataKey="ce_iv" stroke="#E76F51" strokeWidth={1.5} dot={false} isAnimationActive={false} />
-          <Line type="monotone" dataKey="pe_iv" stroke="#2A9D8F" strokeWidth={1.5} dot={false} isAnimationActive={false} />
+          <Line type="linear" dataKey="ce_iv" stroke="#E76F51" strokeWidth={1.5} dot={false} isAnimationActive={false} />
+          <Line type="linear" dataKey="pe_iv" stroke="#2A9D8F" strokeWidth={1.5} dot={false} isAnimationActive={false} />
         </LineChart>
       </ResponsiveContainer>
     </div>
@@ -103,8 +103,8 @@ export function MACDChart({ history }) {
           <Tooltip content={<CustomMACDTooltip />} />
           <Bar dataKey="histPos" fill="#2A9D8F" isAnimationActive={false} stackId="a" />
           <Bar dataKey="histNeg" fill="#E76F51" isAnimationActive={false} stackId="a" />
-          <Line type="monotone" dataKey="macd" stroke="#007AFF" strokeWidth={1.5} dot={false} isAnimationActive={false} />
-          <Line type="monotone" dataKey="signal" stroke="#FF9500" strokeWidth={1.5} dot={false} isAnimationActive={false} />
+          <Line type="linear" dataKey="macd" stroke="#007AFF" strokeWidth={1.5} dot={false} isAnimationActive={false} />
+          <Line type="linear" dataKey="signal" stroke="#FF9500" strokeWidth={1.5} dot={false} isAnimationActive={false} />
         </ComposedChart>
       </ResponsiveContainer>
     </div>
