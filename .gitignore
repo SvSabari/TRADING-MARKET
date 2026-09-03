@@ -1,5 +1,6 @@
 node_modules/
 frontend/node_modules/
+# removed 
 backend/__pycache__/
 backend/venv/
 backend/all_ticks.txt
