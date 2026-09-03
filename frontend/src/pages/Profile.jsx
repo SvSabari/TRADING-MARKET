@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+﻿import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { User, Wallet, ChartLineUp, ShieldCheck } from "@phosphor-icons/react";
 
@@ -46,7 +46,7 @@ export default function Profile() {
   }
 
   if (error) {
-    return <div className="p-6 text-red-500">Error loading profile: {error}</div>;
+    return error.includes("No execution broker configured") ? <div className="p-6 text-[var(--text-primary)] font-medium text-sm">Welcome! Please connect an execution broker in the Settings tab to start trading.</div> : <div className="p-6 text-[var(--sell)] text-sm">Error: {error}</div>;
   }
 
   const toTitleCase = (str) => {
@@ -92,7 +92,7 @@ export default function Profile() {
               <Wallet size={14} /> Available Cash
             </p>
             <p className="text-4xl font-black text-green-500 font-outfit drop-shadow-sm">
-              ₹{Number(funds?.cashmarginavailable || funds?.cash || funds?.net || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+              â‚¹{Number(funds?.cashmarginavailable || funds?.cash || funds?.net || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
             </p>
           </div>
         </div>
@@ -103,13 +103,13 @@ export default function Profile() {
         <div className="surface p-5 rounded-xl border border-[var(--border)] flex flex-col shadow-sm hover:border-[var(--brand)]/30 transition-colors">
           <span className="text-[11px] text-[var(--text-secondary)] uppercase tracking-wider mb-2 font-semibold">Used Margin</span>
           <span className="text-2xl font-bold text-[var(--text-primary)] font-outfit">
-            ₹{Number(funds?.cncMarginUsed || funds?.spanmargin || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+            â‚¹{Number(funds?.cncMarginUsed || funds?.spanmargin || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
           </span>
         </div>
         <div className="surface p-5 rounded-xl border border-[var(--border)] flex flex-col shadow-sm hover:border-[var(--brand)]/30 transition-colors">
           <span className="text-[11px] text-[var(--text-secondary)] uppercase tracking-wider mb-2 font-semibold">Total Balance</span>
           <span className="text-2xl font-bold text-[var(--text-primary)] font-outfit">
-            ₹{Number(funds?.net || funds?.subtotal || funds?.cashmarginavailable || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+            â‚¹{Number(funds?.net || funds?.subtotal || funds?.cashmarginavailable || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
           </span>
         </div>
         <div className="surface p-5 rounded-xl border border-[var(--border)] flex flex-col shadow-sm hover:border-[var(--brand)]/30 transition-colors">
