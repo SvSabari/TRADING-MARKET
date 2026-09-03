@@ -1,4 +1,4 @@
-"""Alice Blue API v3 client wrapper.
+﻿"""Alice Blue API v3 client wrapper.
 
 We use the official `pya3` SDK to handle authentication and order placement.
 """
@@ -183,8 +183,8 @@ async def get_user_aliceblue_client(db, user_id: str) -> Optional[AliceBlueClien
     try:
         session_id = decrypt_str(doc["access_token"])
         return AliceBlueClient(
-            client_code=doc["credentials"]["user_id"],
-            api_key=doc["credentials"]["api_key"],
+            client_code=decrypt_str(doc["credentials"]["user_id"]),
+            api_key=decrypt_str(doc["credentials"]["api_key"]),
             session_id=session_id
         )
     except Exception:
