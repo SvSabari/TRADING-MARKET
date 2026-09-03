@@ -25,4 +25,4 @@ COPY . /app/
 EXPOSE 8001
 
 # Run the application (without reload=True for production)
-CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8001"]
+CMD ["sh", "-c", "uvicorn server:app --host 0.0.0.0 --port ${PORT:-8001}"]
