@@ -92,7 +92,7 @@ export default function Profile() {
               <Wallet size={14} /> Available Cash
             </p>
             <p className="text-4xl font-black text-green-500 font-outfit drop-shadow-sm">
-              â‚¹{Number(funds?.cashmarginavailable || funds?.cash || funds?.net || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+              ₹{Number(funds?.cashmarginavailable || funds?.cash || funds?.net || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
             </p>
           </div>
         </div>
@@ -103,13 +103,13 @@ export default function Profile() {
         <div className="surface p-5 rounded-xl border border-[var(--border)] flex flex-col shadow-sm hover:border-[var(--brand)]/30 transition-colors">
           <span className="text-[11px] text-[var(--text-secondary)] uppercase tracking-wider mb-2 font-semibold">Used Margin</span>
           <span className="text-2xl font-bold text-[var(--text-primary)] font-outfit">
-            â‚¹{Number(funds?.cncMarginUsed || funds?.spanmargin || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+            ₹{Number(funds?.cncMarginUsed || funds?.spanmargin || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
           </span>
         </div>
         <div className="surface p-5 rounded-xl border border-[var(--border)] flex flex-col shadow-sm hover:border-[var(--brand)]/30 transition-colors">
           <span className="text-[11px] text-[var(--text-secondary)] uppercase tracking-wider mb-2 font-semibold">Total Balance</span>
           <span className="text-2xl font-bold text-[var(--text-primary)] font-outfit">
-            â‚¹{Number(funds?.net || funds?.subtotal || funds?.cashmarginavailable || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+            ₹{Number(funds?.net || funds?.subtotal || funds?.cashmarginavailable || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
           </span>
         </div>
         <div className="surface p-5 rounded-xl border border-[var(--border)] flex flex-col shadow-sm hover:border-[var(--brand)]/30 transition-colors">
