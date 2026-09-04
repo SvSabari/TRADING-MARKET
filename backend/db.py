@@ -91,6 +91,15 @@ class InMemoryCollection:
         self._docs.append(new_doc)
         return SimpleNamespace(inserted_id=new_doc["_id"])
 
+    async def insert_many(self, docs: list[dict]):
+        ids = []
+        for doc in docs:
+            new_doc = copy.deepcopy(doc)
+            new_doc.setdefault("_id", str(uuid.uuid4()))
+            self._docs.append(new_doc)
+            ids.append(new_doc["_id"])
+        return SimpleNamespace(inserted_ids=ids)
+
     async def find_one(self, query: Optional[dict] = None, projection: Optional[dict] = None):
         for doc in self._docs:
             if _matches(doc, query):
