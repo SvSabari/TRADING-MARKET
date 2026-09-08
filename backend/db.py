@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import copy
 import os
+import re
 from pathlib import Path
 from datetime import datetime, timezone
 from types import SimpleNamespace
@@ -20,7 +21,7 @@ ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env", override=True)
 load_dotenv(ROOT_DIR.parent / ".env", override=True)
 
-MONGO_URL = os.environ.get("MONGO_URL", "").strip() or "mongodb://localhost:27017"
+MONGO_URL = os.environ.get("MONGO_URI", "").strip() or os.environ.get("MONGO_URL", "").strip() or "mongodb://localhost:27017"
 DB_NAME = os.environ.get("DB_NAME", "").strip() or "algo_trading_db"
 USE_IN_MEMORY_DB = os.environ.get("USE_IN_MEMORY_DB", "false").strip().lower() in {"1", "true", "yes", "on"}
 
@@ -178,7 +179,8 @@ else:
         _client = AsyncIOMotorClient(MONGO_URL, serverSelectionTimeoutMS=5000)
         db = _client[DB_NAME]
     except PyMongoError as e:
-        print(f"CRITICAL: Failed to connect to MongoDB at {MONGO_URL}: {e}")
+        safe_url = re.sub(r"//([^:]+):([^@]+)@", "//***:***@", MONGO_URL)
+        print(f"CRITICAL: Failed to connect to MongoDB at {safe_url}: {e}")
         # We don't fall back to memory silently. That causes data loss/reappearance bugs!
         raise e
 
