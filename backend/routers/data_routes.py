@@ -144,3 +144,11 @@ async def download_parquet(path: str):
         headers={"Content-Disposition": f"attachment; filename={symbol}.csv"}
     )
 
+
+@router.get('/debug-mongo')
+async def debug_mongo():
+    import os
+    url = os.environ.get('MONGO_URL', '')
+    uri = os.environ.get('MONGO_URI', '')
+    return {'MONGO_URL': url[:15] + '...', 'MONGO_URI': uri[:15] + '...', 'USE_IN_MEMORY': os.environ.get('USE_IN_MEMORY_DB', '')}
+
