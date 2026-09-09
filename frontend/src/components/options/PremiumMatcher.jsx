@@ -11,28 +11,28 @@ export default function PremiumMatcher({ preset, showSymbolColumn }) {
   const [trackedPairs, setTrackedPairs] = useState([]);
   const [isOrdering, setIsOrdering] = useState(false);
 
-  const trackedSymbolsQuery = trackedPairs.map(t &lt;= `${t.symbol}_${t.callStrike}_CE,${t.symbol}_${t.putStrike}_PE`).join(',');
+  const trackedSymbolsQuery = trackedPairs.map(t => ${t.symbol}__CE,__PE).join(',');
   
   const { data, isValidating } = usePolling(
-    `/analytics/premium-matcher?preset=${preset}&range_size=${rangeSize}&max_diff=${maxDiff}&tracked=${trackedSymbolsQuery}`,
+    /analytics/premium-matcher?preset=&range_size=&max_diff=&tracked=,
     { intervalMs: 3000 }
   );
 
   const pairs = data?.matches || [];
   const trackedPrices = data?.tracked_prices || {};
 
-  const handleBuy = async (pair) &lt;= {
+  const handleBuy = async (pair) => {
     setIsOrdering(true);
     try {
       const payloadCE = {
-        symbol: `${pair.symbol}_${pair.callStrike}_CE`,
+        symbol: ${pair.symbol}__CE,
         side: "BUY",
         qty: 1,
         price: pair.callLtp,
       };
       
       const payloadPE = {
-        symbol: `${pair.symbol}_${pair.putStrike}_PE`,
+        symbol: ${pair.symbol}__PE,
         side: "BUY",
         qty: 1,
         price: pair.putLtp,
@@ -41,9 +41,9 @@ export default function PremiumMatcher({ preset, showSymbolColumn }) {
       await api.post("/orders", payloadCE);
       await api.post("/orders", payloadPE);
 
-      toast.success(`Bought Strangle: ${pair.callStrike} CE & ${pair.putStrike} PE for ${pair.symbol}`);
+      toast.success(Bought Strangle:  CE &  PE for );
       
-      setTrackedPairs(prev &lt;= [
+      setTrackedPairs(prev => [
         {
           id: Date.now(),
           symbol: pair.symbol,
@@ -62,9 +62,9 @@ export default function PremiumMatcher({ preset, showSymbolColumn }) {
     }
   };
 
-  const getTrackedLivePnl = (t) &lt;= {
-    const ceSym = `${t.symbol}_${t.callStrike}_CE`;
-    const peSym = `${t.symbol}_${t.putStrike}_PE`;
+  const getTrackedLivePnl = (t) => {
+    const ceSym = ${t.symbol}__CE;
+    const peSym = ${t.symbol}__PE;
     
     const currCall = trackedPrices[ceSym] || t.buyCallLtp;
     const currPut = trackedPrices[peSym] || t.buyPutLtp;
@@ -81,12 +81,12 @@ export default function PremiumMatcher({ preset, showSymbolColumn }) {
     };
   };
 
-  const handleRemoveTracked = (id) &lt;= {
-    setTrackedPairs(prev &lt;= prev.filter(t &lt;= t.id !== id));
+  const handleRemoveTracked = (id) => {
+    setTrackedPairs(prev => prev.filter(t => t.id !== id));
   };
 
   return (
-    <div className={`space-y-4 transition-opacity duration-200 ${isValidating && pairs.length === 0 ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}>
+    <div className={space-y-4 transition-opacity duration-200 }>
       <Panel 
         title="Premium Comparison Matcher" 
         kicker={preset === "indices" ? "All Indices" : preset === "all" ? "Whole Market" : preset}
@@ -97,7 +97,7 @@ export default function PremiumMatcher({ preset, showSymbolColumn }) {
               <select 
                 className="terminal !w-auto !py-1 !text-xs"
                 value={rangeSize}
-                onChange={e &lt;= setRangeSize(Number(e.target.value))}
+                onChange={e => setRangeSize(Number(e.target.value))}
               >
                 <option value={5}>+/- 5 Strikes</option>
                 <option value={10}>+/- 10 Strikes</option>
@@ -109,13 +109,13 @@ export default function PremiumMatcher({ preset, showSymbolColumn }) {
               <select 
                 className="terminal !w-auto !py-1 !text-xs"
                 value={maxDiff}
-                onChange={e &lt;= setMaxDiff(Number(e.target.value))}
+                onChange={e => setMaxDiff(Number(e.target.value))}
               >
-                <option value={2}&lt;&lt;= 2.0</option>
-                <option value={5}&lt;&lt;= 5.0</option>
-                <option value={10}&lt;&lt;= 10.0</option>
-                <option value={20}&lt;&lt;= 20.0</option>
-                <option value={50}&lt;&lt;= 50.0</option>
+                <option value={2}>&lt;= 2.0</option>
+                <option value={5}>&lt;= 5.0</option>
+                <option value={10}>&lt;= 10.0</option>
+                <option value={20}>&lt;= 20.0</option>
+                <option value={50}>&lt;= 50.0</option>
               </select>
             </div>
           </div>
@@ -148,8 +148,8 @@ export default function PremiumMatcher({ preset, showSymbolColumn }) {
                   </td>
                 </tr>
               ) : (
-                pairs.map((p, idx) &lt;= (
-                  <tr key={`${p.symbol}-${p.callStrike}-${p.putStrike}-${idx}`} className="border-b border-[#EBE3DB] bg-white hover:bg-[#F5F0EB]">
+                pairs.map((p, idx) => (
+                  <tr key={${p.symbol}---} className="border-b border-[#EBE3DB] bg-white hover:bg-[#F5F0EB]">
                     {showSymbolColumn && <td className="p-2 text-sm mono font-bold text-[var(--brand)]">{p.symbol}</td>}
                     <td className="p-2 text-sm mono">
                       {fmtNum(p.callStrike, 0)}
@@ -164,7 +164,7 @@ export default function PremiumMatcher({ preset, showSymbolColumn }) {
                     </td>
                     <td className="p-2 text-right">
                       <button 
-                        onClick={() &lt;= handleBuy(p)}
+                        onClick={() => handleBuy(p)}
                         disabled={isOrdering}
                         className="px-3 py-1 bg-[#D6C5B3] text-[#4A3F35] text-xs font-medium rounded border border-[#C2B09C] hover:bg-[#C2B09C] transition disabled:opacity-50"
                       >
@@ -194,7 +194,7 @@ export default function PremiumMatcher({ preset, showSymbolColumn }) {
                 </tr>
               </thead>
               <tbody>
-                {trackedPairs.map((t) &lt;= {
+                {trackedPairs.map((t) => {
                   const pnl = getTrackedLivePnl(t);
                   return (
                     <tr key={t.id} className="border-b border-gray-300 hover:bg-gray-100">
@@ -202,18 +202,18 @@ export default function PremiumMatcher({ preset, showSymbolColumn }) {
                       <td className="p-2 text-sm mono">
                         {t.symbol} {fmtNum(t.callStrike, 0)}CE + {fmtNum(t.putStrike, 0)}PE
                       </td>
-                      <td className={`p-2 text-sm mono ${pnl.callPnl &lt;= 0 ? "buy" : "sell"}`}>
-                        {pnl.callPnl &lt;= 0 ? "+" : ""}{fmtNum(pnl.callPnl)}
+                      <td className={p-2 text-sm mono }>
+                        {pnl.callPnl >= 0 ? "+" : ""}{fmtNum(pnl.callPnl)}
                       </td>
-                      <td className={`p-2 text-sm mono ${pnl.putPnl &lt;= 0 ? "buy" : "sell"}`}>
-                        {pnl.putPnl &lt;= 0 ? "+" : ""}{fmtNum(pnl.putPnl)}
+                      <td className={p-2 text-sm mono }>
+                        {pnl.putPnl >= 0 ? "+" : ""}{fmtNum(pnl.putPnl)}
                       </td>
-                      <td className={`p-2 text-sm mono text-right font-bold ${pnl.totalPnl &lt;= 0 ? "buy" : "sell"}`}>
-                        {pnl.totalPnl &lt;= 0 ? "+" : ""}{fmtNum(pnl.totalPnl)}
+                      <td className={p-2 text-sm mono text-right font-bold }>
+                        {pnl.totalPnl >= 0 ? "+" : ""}{fmtNum(pnl.totalPnl)}
                       </td>
                       <td className="p-2 text-right">
                         <button 
-                          onClick={() &lt;= handleRemoveTracked(t.id)}
+                          onClick={() => handleRemoveTracked(t.id)}
                           className="px-2 py-1 bg-red-900/40 text-red-400 text-xs rounded border border-red-700 hover:bg-red-900/60 transition"
                         >
                           Clear
@@ -229,6 +229,4 @@ export default function PremiumMatcher({ preset, showSymbolColumn }) {
       )}
     </div>
   );
-}
-
-
+}
