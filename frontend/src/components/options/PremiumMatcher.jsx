@@ -11,10 +11,10 @@ export default function PremiumMatcher({ preset, showSymbolColumn }) {
   const [trackedPairs, setTrackedPairs] = useState([]);
   const [isOrdering, setIsOrdering] = useState(false);
 
-  const trackedSymbolsQuery = trackedPairs.map(t => ${t.symbol}__CE,__PE).join(',');
+  const trackedSymbolsQuery = trackedPairs.map(t => `${t.symbol}_${t.callStrike}_CE,${t.symbol}_${t.putStrike}_PE`).join(',');
   
   const { data, isValidating } = usePolling(
-    /analytics/premium-matcher?preset=&range_size=&max_diff=&tracked=,
+    `/analytics/premium-matcher?preset=${preset}&range_size=${rangeSize}&max_diff=${maxDiff}&tracked=${trackedSymbolsQuery}`,
     { intervalMs: 3000 }
   );
 
@@ -25,14 +25,14 @@ export default function PremiumMatcher({ preset, showSymbolColumn }) {
     setIsOrdering(true);
     try {
       const payloadCE = {
-        symbol: ${pair.symbol}__CE,
+        symbol: `${pair.symbol}_${pair.callStrike}_CE`,
         side: "BUY",
         qty: 1,
         price: pair.callLtp,
       };
       
       const payloadPE = {
-        symbol: ${pair.symbol}__PE,
+        symbol: `${pair.symbol}_${pair.putStrike}_PE`,
         side: "BUY",
         qty: 1,
         price: pair.putLtp,
@@ -41,7 +41,7 @@ export default function PremiumMatcher({ preset, showSymbolColumn }) {
       await api.post("/orders", payloadCE);
       await api.post("/orders", payloadPE);
 
-      toast.success(Bought Strangle:  CE &  PE for );
+      toast.success(`Bought Strangle: ${pair.callStrike} CE & ${pair.putStrike} PE for ${pair.symbol}`);
       
       setTrackedPairs(prev => [
         {
@@ -63,8 +63,8 @@ export default function PremiumMatcher({ preset, showSymbolColumn }) {
   };
 
   const getTrackedLivePnl = (t) => {
-    const ceSym = ${t.symbol}__CE;
-    const peSym = ${t.symbol}__PE;
+    const ceSym = `${t.symbol}_${t.callStrike}_CE`;
+    const peSym = `${t.symbol}_${t.putStrike}_PE`;
     
     const currCall = trackedPrices[ceSym] || t.buyCallLtp;
     const currPut = trackedPrices[peSym] || t.buyPutLtp;
@@ -86,7 +86,7 @@ export default function PremiumMatcher({ preset, showSymbolColumn }) {
   };
 
   return (
-    <div className={space-y-4 transition-opacity duration-200 }>
+    <div className={`space-y-4 transition-opacity duration-200 ${isValidating && pairs.length === 0 ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}>
       <Panel 
         title="Premium Comparison Matcher" 
         kicker={preset === "indices" ? "All Indices" : preset === "all" ? "Whole Market" : preset}
@@ -149,7 +149,7 @@ export default function PremiumMatcher({ preset, showSymbolColumn }) {
                 </tr>
               ) : (
                 pairs.map((p, idx) => (
-                  <tr key={${p.symbol}---} className="border-b border-[#EBE3DB] bg-white hover:bg-[#F5F0EB]">
+                  <tr key={`${p.symbol}-${p.callStrike}-${p.putStrike}-${idx}`} className="border-b border-[#EBE3DB] bg-white hover:bg-[#F5F0EB]">
                     {showSymbolColumn && <td className="p-2 text-sm mono font-bold text-[var(--brand)]">{p.symbol}</td>}
                     <td className="p-2 text-sm mono">
                       {fmtNum(p.callStrike, 0)}
@@ -202,13 +202,13 @@ export default function PremiumMatcher({ preset, showSymbolColumn }) {
                       <td className="p-2 text-sm mono">
                         {t.symbol} {fmtNum(t.callStrike, 0)}CE + {fmtNum(t.putStrike, 0)}PE
                       </td>
-                      <td className={p-2 text-sm mono }>
+                      <td className={`p-2 text-sm mono ${pnl.callPnl >= 0 ? "buy" : "sell"}`}>
                         {pnl.callPnl >= 0 ? "+" : ""}{fmtNum(pnl.callPnl)}
                       </td>
-                      <td className={p-2 text-sm mono }>
+                      <td className={`p-2 text-sm mono ${pnl.putPnl >= 0 ? "buy" : "sell"}`}>
                         {pnl.putPnl >= 0 ? "+" : ""}{fmtNum(pnl.putPnl)}
                       </td>
-                      <td className={p-2 text-sm mono text-right font-bold }>
+                      <td className={`p-2 text-sm mono text-right font-bold ${pnl.totalPnl >= 0 ? "buy" : "sell"}`}>
                         {pnl.totalPnl >= 0 ? "+" : ""}{fmtNum(pnl.totalPnl)}
                       </td>
                       <td className="p-2 text-right">
