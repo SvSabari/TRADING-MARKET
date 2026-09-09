@@ -111,7 +111,8 @@ export default function ChartWidget({
 
   const INDICES = ["NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY", "SENSEX", "NIFTYNXT50"];    // Custom Header Right for the Panel
     const panelRight = (
-      <div className="flex items-center gap-1.5 relative">
+      <div className="flex items-center gap-1.5">
+        <div className="relative flex items-center">
         <button 
           className="px-2 py-0.5 text-[10px] font-bold uppercase rounded"
           style={{ background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text-secondary)" }}
@@ -121,7 +122,7 @@ export default function ChartWidget({
         </button>
         
         {showSettings && (
-          <div className="absolute top-full right-0 mt-1 p-3 rounded shadow-xl z-50 flex flex-col gap-3" style={{ background: "var(--surface)", border: "1px solid var(--border)", minWidth: "160px" }}>
+          <div className="absolute top-full left-0 mt-1 p-3 rounded shadow-xl z-50 flex flex-col gap-3" style={{ background: "var(--surface)", border: "1px solid var(--border)", minWidth: "160px" }}>
              <div className="text-[10px] font-bold uppercase text-[var(--text-secondary)] mb-1">Moving Averages</div>
              <div className="flex items-center justify-between gap-2">
                <label className="text-[11px] font-bold" style={{color: "#2196F3"}}>EMA 1</label>
@@ -139,6 +140,7 @@ export default function ChartWidget({
              </button>
           </div>
         )}
+        </div>
 
         <select  
         className="outline-none cursor-pointer font-bold uppercase rounded shadow-sm"
