@@ -126,6 +126,7 @@ export default function PremiumMatcher({ preset, showSymbolColumn }) {
             <thead>
               <tr className="border-b border-[#333] text-xs dim">
                 {showSymbolColumn && <th className="p-2 font-normal">SYMBOL</th>}
+                <th className="p-2 font-normal">CURRENT PRICE</th>
                 <th className="p-2 font-normal">CALL STRIKE</th>
                 <th className="p-2 font-normal">CALL LTP</th>
                 <th className="p-2 font-normal">PUT STRIKE</th>
@@ -137,13 +138,13 @@ export default function PremiumMatcher({ preset, showSymbolColumn }) {
             <tbody>
               {!data ? (
                 <tr>
-                  <td colSpan={showSymbolColumn ? 7 : 6} className="p-4 text-center dim text-sm">
+                  <td colSpan={showSymbolColumn ? 8 : 7} className="p-4 text-center dim text-sm">
                     Loading premium pairs...
                   </td>
                 </tr>
               ) : pairs.length === 0 ? (
                 <tr>
-                  <td colSpan={showSymbolColumn ? 7 : 6} className="p-4 text-center dim text-sm">
+                  <td colSpan={showSymbolColumn ? 8 : 7} className="p-4 text-center dim text-sm">
                     No matching pairs found in this range.
                   </td>
                 </tr>
@@ -151,6 +152,7 @@ export default function PremiumMatcher({ preset, showSymbolColumn }) {
                 pairs.map((p, idx) => (
                   <tr key={`${p.symbol}-${p.callStrike}-${p.putStrike}-${idx}`} className="border-b border-[#EBE3DB] bg-white hover:bg-[#F5F0EB]">
                     {showSymbolColumn && <td className="p-2 text-sm mono font-bold text-[var(--brand)]">{p.symbol}</td>}
+                    <td className="p-2 text-sm mono dim">{fmtNum(p.spot)}</td>
                     <td className="p-2 text-sm mono">
                       {fmtNum(p.callStrike, 0)}
                     </td>

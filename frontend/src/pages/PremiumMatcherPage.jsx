@@ -28,8 +28,8 @@ export default function PremiumMatcherPage() {
             onChange={(e) => setPreset(e.target.value)}
             className="terminal !w-auto !py-1 !text-sm cursor-pointer"
           >
-            <option value="indices" className="font-bold text-[var(--brand)]">"?"? All Indices</option>
-            <option value="all" className="font-bold text-[var(--brand)]">"?"? All Market (Equities + Indices)</option>
+            <option value="indices" className="font-bold text-[var(--brand)]">All Indices (Separate)</option>
+            <option value="all" className="font-bold text-[var(--brand)]">All Market (Combined Table)</option>
             
             <optgroup label="Indices" className="dim">
               {indices.map((s) => <option key={s} value={s}>{s}</option>)}
@@ -42,7 +42,15 @@ export default function PremiumMatcherPage() {
         </div>
       </div>
 
-      <PremiumMatcher preset={preset} />
+      {preset === "indices" ? (
+        <div className="space-y-6">
+          {indices.map(idx => (
+            <PremiumMatcher key={idx} preset={idx} showSymbolColumn={false} />
+          ))}
+        </div>
+      ) : (
+        <PremiumMatcher preset={preset} showSymbolColumn={preset === "all"} />
+      )}
     </div>
   );
 }

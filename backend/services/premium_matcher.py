@@ -53,6 +53,7 @@ async def get_premium_matches_for_symbols(db, user_id: str, symbols: List[str], 
                     if diff <= max_diff:
                         all_matches.append({
                             "symbol": symbol,
+                            "spot": chain.get("spot", 0),
                             "callStrike": call_row['strike'],
                             "callLtp": ce_ltp,
                             "putStrike": put_row['strike'],
