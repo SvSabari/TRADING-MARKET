@@ -40,7 +40,36 @@ async def get_cached_or_build(symbol: str, user_id: str, expiry: str = None):
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 
 
+
+@router.get("/premium-matcher")
+async def premium_matcher_api(preset: str = "indices", range_size: int = 10, max_diff: float = 5.0, tracked: str = "", user: User = Depends(get_current_user)):
+    from services.premium_matcher import get_premium_matches_for_symbols
+    from routers.market_routes import NIFTY_50
+    from services.market_data import tick_engine
+    
+    symbols = []
+    INDICES = ["NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY", "SENSEX", "NIFTYNXT50"]
+    
+    if preset == "indices":
+        symbols = INDICES
+    elif preset == "all":
+        symbols = INDICES + NIFTY_50
+    else:
+        symbols = [preset]
+        
+    matches = await get_premium_matches_for_symbols(db, user.id, symbols, range_size, max_diff)
+    
+    tracked_prices = {}
+    if tracked:
+        for t in tracked.split(','):
+            t = t.strip()
+            if t:
+                tracked_prices[t] = tick_engine.prices.get(t, 0.0)
+                
+    return {"matches": matches, "tracked_prices": tracked_prices}
+
 @router.get("/option-chain")
+
 async def option_chain(symbol: str = "NIFTY", expiry: str = None, user: User = Depends(get_current_user)):
     chain = await get_cached_or_build(symbol, user.id, expiry)
     return {

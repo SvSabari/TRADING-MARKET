@@ -1,84 +1,38 @@
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
+import { usePolling } from "@/lib/use-polling";
 import { fmtNum } from "@/lib/format";
 import Panel from "@/components/Panel";
 
-export default function PremiumMatcher({ chain, symbol }) {
+export default function PremiumMatcher({ preset }) {
   const [rangeSize, setRangeSize] = useState(10);
   const [maxDiff, setMaxDiff] = useState(5);
   const [trackedPairs, setTrackedPairs] = useState([]);
   const [isOrdering, setIsOrdering] = useState(false);
 
-  // Compute matched pairs
-  const pairs = useMemo(() => {
-    if (!chain || !chain.rows || chain.rows.length === 0) return [];
+  const trackedSymbolsQuery = trackedPairs.map(t => `${t.symbol}_${t.callStrike}_CE,${t.symbol}_${t.putStrike}_PE`).join(',');
+  
+  const { data, isValidating } = usePolling(
+    `/analytics/premium-matcher?preset=${preset}&range_size=${rangeSize}&max_diff=${maxDiff}&tracked=${trackedSymbolsQuery}`,
+    { intervalMs: 3000 }
+  );
 
-    const atm = chain.atm;
-    const sortedRows = [...chain.rows].sort((a, b) => a.strike - b.strike);
-    
-    // Find index of ATM
-    let atmIndex = sortedRows.findIndex(r => r.strike === atm);
-    if (atmIndex === -1) {
-      // fallback to closest if exact ATM missing
-      let minD = Infinity;
-      sortedRows.forEach((r, i) => {
-        const d = Math.abs(r.strike - atm);
-        if (d < minD) {
-          minD = d;
-          atmIndex = i;
-        }
-      });
-    }
-
-    const startIdx = Math.max(0, atmIndex - rangeSize);
-    const endIdx = Math.min(sortedRows.length - 1, atmIndex + rangeSize);
-    const rangeContracts = sortedRows.slice(startIdx, endIdx + 1);
-
-    const calls = rangeContracts.filter(r => (r.ce_ltp || 0) >= 2.0);
-    const puts = rangeContracts.filter(r => (r.pe_ltp || 0) >= 2.0);
-
-    const matches = [];
-
-    calls.forEach(c => {
-      puts.forEach(p => {
-        const diff = Math.abs(c.ce_ltp - p.pe_ltp);
-        if (diff <= maxDiff) {
-          matches.push({
-            callStrike: c.strike,
-            callLtp: c.ce_ltp,
-            putStrike: p.strike,
-            putLtp: p.pe_ltp,
-            diff: diff,
-            isCenter: c.strike === atm
-          });
-        }
-      });
-    });
-
-    // Sort by smallest difference first, center strike at top
-    matches.sort((a, b) => {
-      if (a.isCenter && !b.isCenter) return -1;
-      if (!a.isCenter && b.isCenter) return 1;
-      return a.diff - b.diff;
-    });
-
-    return matches;
-  }, [chain, rangeSize, maxDiff]);
+  const pairs = data?.matches || [];
+  const trackedPrices = data?.tracked_prices || {};
 
   const handleBuy = async (pair) => {
     setIsOrdering(true);
     try {
-      // Mock API call or real API call to /orders
       const payloadCE = {
-        symbol: `${symbol}_${pair.callStrike}_CE`,
+        symbol: `${pair.symbol}_${pair.callStrike}_CE`,
         side: "BUY",
         qty: 1,
         price: pair.callLtp,
       };
       
       const payloadPE = {
-        symbol: `${symbol}_${pair.putStrike}_PE`,
+        symbol: `${pair.symbol}_${pair.putStrike}_PE`,
         side: "BUY",
         qty: 1,
         price: pair.putLtp,
@@ -87,13 +41,12 @@ export default function PremiumMatcher({ chain, symbol }) {
       await api.post("/orders", payloadCE);
       await api.post("/orders", payloadPE);
 
-      toast.success(`Bought Strangle: ${pair.callStrike} CE & ${pair.putStrike} PE`);
+      toast.success(`Bought Strangle: ${pair.callStrike} CE & ${pair.putStrike} PE for ${pair.symbol}`);
       
-      // Add to tracked pairs
       setTrackedPairs(prev => [
         {
           id: Date.now(),
-          symbol,
+          symbol: pair.symbol,
           callStrike: pair.callStrike,
           buyCallLtp: pair.callLtp,
           putStrike: pair.putStrike,
@@ -110,11 +63,11 @@ export default function PremiumMatcher({ chain, symbol }) {
   };
 
   const getTrackedLivePnl = (t) => {
-    const callRow = chain?.rows?.find(r => r.strike === t.callStrike);
-    const putRow = chain?.rows?.find(r => r.strike === t.putStrike);
+    const ceSym = `${t.symbol}_${t.callStrike}_CE`;
+    const peSym = `${t.symbol}_${t.putStrike}_PE`;
     
-    const currCall = callRow?.ce_ltp || t.buyCallLtp;
-    const currPut = putRow?.pe_ltp || t.buyPutLtp;
+    const currCall = trackedPrices[ceSym] || t.buyCallLtp;
+    const currPut = trackedPrices[peSym] || t.buyPutLtp;
 
     const callPnl = currCall - t.buyCallLtp;
     const putPnl = currPut - t.buyPutLtp;
@@ -133,10 +86,10 @@ export default function PremiumMatcher({ chain, symbol }) {
   };
 
   return (
-    <div className="space-y-4">
+    <div className={`space-y-4 transition-opacity duration-200 ${isValidating && pairs.length === 0 ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}>
       <Panel 
         title="Premium Comparison Matcher" 
-        kicker="Delta-neutral combos"
+        kicker={preset === "indices" ? "All Indices" : preset === "all" ? "Whole Market" : preset}
         right={
           <div className="flex gap-4">
             <div className="flex items-center gap-2">
@@ -146,9 +99,9 @@ export default function PremiumMatcher({ chain, symbol }) {
                 value={rangeSize}
                 onChange={e => setRangeSize(Number(e.target.value))}
               >
-                <option value={5}>± 5 Strikes</option>
-                <option value={10}>± 10 Strikes</option>
-                <option value={15}>± 15 Strikes</option>
+                <option value={5}>� 5 Strikes</option>
+                <option value={10}>� 10 Strikes</option>
+                <option value={15}>� 15 Strikes</option>
               </select>
             </div>
             <div className="flex items-center gap-2">
@@ -158,11 +111,11 @@ export default function PremiumMatcher({ chain, symbol }) {
                 value={maxDiff}
                 onChange={e => setMaxDiff(Number(e.target.value))}
               >
-                <option value={2}>≤ 2.0</option>
-                <option value={5}>≤ 5.0</option>
-                <option value={10}>≤ 10.0</option>
-                <option value={20}>≤ 20.0</option>
-                <option value={50}>≤ 50.0</option>
+                <option value={2}>= 2.0</option>
+                <option value={5}>= 5.0</option>
+                <option value={10}>= 10.0</option>
+                <option value={20}>= 20.0</option>
+                <option value={50}>= 50.0</option>
               </select>
             </div>
           </div>
@@ -172,6 +125,7 @@ export default function PremiumMatcher({ chain, symbol }) {
           <table className="w-full text-left">
             <thead>
               <tr className="border-b border-[#333] text-xs dim">
+                <th className="p-2 font-normal">SYMBOL</th>
                 <th className="p-2 font-normal">CALL STRIKE</th>
                 <th className="p-2 font-normal">CALL LTP</th>
                 <th className="p-2 font-normal">PUT STRIKE</th>
@@ -181,17 +135,24 @@ export default function PremiumMatcher({ chain, symbol }) {
               </tr>
             </thead>
             <tbody>
-              {pairs.length === 0 ? (
+              {!data ? (
                 <tr>
-                  <td colSpan={6} className="p-4 text-center dim text-sm">
+                  <td colSpan={7} className="p-4 text-center dim text-sm">
+                    Loading premium pairs...
+                  </td>
+                </tr>
+              ) : pairs.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="p-4 text-center dim text-sm">
                     No matching pairs found in this range.
                   </td>
                 </tr>
               ) : (
                 pairs.map((p, idx) => (
-                  <tr key={idx} className={`border-b border-[#EBE3DB] ${p.isCenter ? "bg-[#EBE3DB]" : "bg-white hover:bg-[#F5F0EB]"}`}>
+                  <tr key={`${p.symbol}-${p.callStrike}-${p.putStrike}-${idx}`} className="border-b border-[#EBE3DB] bg-white hover:bg-[#F5F0EB]">
+                    <td className="p-2 text-sm mono font-bold text-[var(--brand)]">{p.symbol}</td>
                     <td className="p-2 text-sm mono">
-                      {fmtNum(p.callStrike, 0)} {p.isCenter && <span className="dim text-xs">(ATM)</span>}
+                      {fmtNum(p.callStrike, 0)}
                     </td>
                     <td className="p-2 text-sm mono buy">{fmtNum(p.callLtp)}</td>
                     <td className="p-2 text-sm mono">
