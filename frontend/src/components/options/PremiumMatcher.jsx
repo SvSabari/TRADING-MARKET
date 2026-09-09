@@ -5,13 +5,13 @@ import { usePolling } from "@/lib/use-polling";
 import { fmtNum } from "@/lib/format";
 import Panel from "@/components/Panel";
 
-export default function PremiumMatcher({ preset }) {
+export default function PremiumMatcher({ preset, showSymbolColumn }) {
   const [rangeSize, setRangeSize] = useState(10);
   const [maxDiff, setMaxDiff] = useState(5);
   const [trackedPairs, setTrackedPairs] = useState([]);
   const [isOrdering, setIsOrdering] = useState(false);
 
-  const trackedSymbolsQuery = trackedPairs.map(t => `${t.symbol}_${t.callStrike}_CE,${t.symbol}_${t.putStrike}_PE`).join(',');
+  const trackedSymbolsQuery = trackedPairs.map(t &lt;= `${t.symbol}_${t.callStrike}_CE,${t.symbol}_${t.putStrike}_PE`).join(',');
   
   const { data, isValidating } = usePolling(
     `/analytics/premium-matcher?preset=${preset}&range_size=${rangeSize}&max_diff=${maxDiff}&tracked=${trackedSymbolsQuery}`,
@@ -21,7 +21,7 @@ export default function PremiumMatcher({ preset }) {
   const pairs = data?.matches || [];
   const trackedPrices = data?.tracked_prices || {};
 
-  const handleBuy = async (pair) => {
+  const handleBuy = async (pair) &lt;= {
     setIsOrdering(true);
     try {
       const payloadCE = {
@@ -43,7 +43,7 @@ export default function PremiumMatcher({ preset }) {
 
       toast.success(`Bought Strangle: ${pair.callStrike} CE & ${pair.putStrike} PE for ${pair.symbol}`);
       
-      setTrackedPairs(prev => [
+      setTrackedPairs(prev &lt;= [
         {
           id: Date.now(),
           symbol: pair.symbol,
@@ -62,7 +62,7 @@ export default function PremiumMatcher({ preset }) {
     }
   };
 
-  const getTrackedLivePnl = (t) => {
+  const getTrackedLivePnl = (t) &lt;= {
     const ceSym = `${t.symbol}_${t.callStrike}_CE`;
     const peSym = `${t.symbol}_${t.putStrike}_PE`;
     
@@ -81,8 +81,8 @@ export default function PremiumMatcher({ preset }) {
     };
   };
 
-  const handleRemoveTracked = (id) => {
-    setTrackedPairs(prev => prev.filter(t => t.id !== id));
+  const handleRemoveTracked = (id) &lt;= {
+    setTrackedPairs(prev &lt;= prev.filter(t &lt;= t.id !== id));
   };
 
   return (
@@ -97,11 +97,11 @@ export default function PremiumMatcher({ preset }) {
               <select 
                 className="terminal !w-auto !py-1 !text-xs"
                 value={rangeSize}
-                onChange={e => setRangeSize(Number(e.target.value))}
+                onChange={e &lt;= setRangeSize(Number(e.target.value))}
               >
-                <option value={5}>± 5 Strikes</option>
-                <option value={10}>± 10 Strikes</option>
-                <option value={15}>± 15 Strikes</option>
+                <option value={5}>+/- 5 Strikes</option>
+                <option value={10}>+/- 10 Strikes</option>
+                <option value={15}>+/- 15 Strikes</option>
               </select>
             </div>
             <div className="flex items-center gap-2">
@@ -109,13 +109,13 @@ export default function PremiumMatcher({ preset }) {
               <select 
                 className="terminal !w-auto !py-1 !text-xs"
                 value={maxDiff}
-                onChange={e => setMaxDiff(Number(e.target.value))}
+                onChange={e &lt;= setMaxDiff(Number(e.target.value))}
               >
-                <option value={2}>= 2.0</option>
-                <option value={5}>= 5.0</option>
-                <option value={10}>= 10.0</option>
-                <option value={20}>= 20.0</option>
-                <option value={50}>= 50.0</option>
+                <option value={2}&lt;&lt;= 2.0</option>
+                <option value={5}&lt;&lt;= 5.0</option>
+                <option value={10}&lt;&lt;= 10.0</option>
+                <option value={20}&lt;&lt;= 20.0</option>
+                <option value={50}&lt;&lt;= 50.0</option>
               </select>
             </div>
           </div>
@@ -125,7 +125,7 @@ export default function PremiumMatcher({ preset }) {
           <table className="w-full text-left">
             <thead>
               <tr className="border-b border-[#333] text-xs dim">
-                <th className="p-2 font-normal">SYMBOL</th>
+                {showSymbolColumn && <th className="p-2 font-normal">SYMBOL</th>}
                 <th className="p-2 font-normal">CALL STRIKE</th>
                 <th className="p-2 font-normal">CALL LTP</th>
                 <th className="p-2 font-normal">PUT STRIKE</th>
@@ -137,20 +137,20 @@ export default function PremiumMatcher({ preset }) {
             <tbody>
               {!data ? (
                 <tr>
-                  <td colSpan={7} className="p-4 text-center dim text-sm">
+                  <td colSpan={showSymbolColumn ? 7 : 6} className="p-4 text-center dim text-sm">
                     Loading premium pairs...
                   </td>
                 </tr>
               ) : pairs.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="p-4 text-center dim text-sm">
+                  <td colSpan={showSymbolColumn ? 7 : 6} className="p-4 text-center dim text-sm">
                     No matching pairs found in this range.
                   </td>
                 </tr>
               ) : (
-                pairs.map((p, idx) => (
+                pairs.map((p, idx) &lt;= (
                   <tr key={`${p.symbol}-${p.callStrike}-${p.putStrike}-${idx}`} className="border-b border-[#EBE3DB] bg-white hover:bg-[#F5F0EB]">
-                    <td className="p-2 text-sm mono font-bold text-[var(--brand)]">{p.symbol}</td>
+                    {showSymbolColumn && <td className="p-2 text-sm mono font-bold text-[var(--brand)]">{p.symbol}</td>}
                     <td className="p-2 text-sm mono">
                       {fmtNum(p.callStrike, 0)}
                     </td>
@@ -164,7 +164,7 @@ export default function PremiumMatcher({ preset }) {
                     </td>
                     <td className="p-2 text-right">
                       <button 
-                        onClick={() => handleBuy(p)}
+                        onClick={() &lt;= handleBuy(p)}
                         disabled={isOrdering}
                         className="px-3 py-1 bg-[#D6C5B3] text-[#4A3F35] text-xs font-medium rounded border border-[#C2B09C] hover:bg-[#C2B09C] transition disabled:opacity-50"
                       >
@@ -194,7 +194,7 @@ export default function PremiumMatcher({ preset }) {
                 </tr>
               </thead>
               <tbody>
-                {trackedPairs.map((t) => {
+                {trackedPairs.map((t) &lt;= {
                   const pnl = getTrackedLivePnl(t);
                   return (
                     <tr key={t.id} className="border-b border-gray-300 hover:bg-gray-100">
@@ -202,18 +202,18 @@ export default function PremiumMatcher({ preset }) {
                       <td className="p-2 text-sm mono">
                         {t.symbol} {fmtNum(t.callStrike, 0)}CE + {fmtNum(t.putStrike, 0)}PE
                       </td>
-                      <td className={`p-2 text-sm mono ${pnl.callPnl >= 0 ? "buy" : "sell"}`}>
-                        {pnl.callPnl >= 0 ? "+" : ""}{fmtNum(pnl.callPnl)}
+                      <td className={`p-2 text-sm mono ${pnl.callPnl &lt;= 0 ? "buy" : "sell"}`}>
+                        {pnl.callPnl &lt;= 0 ? "+" : ""}{fmtNum(pnl.callPnl)}
                       </td>
-                      <td className={`p-2 text-sm mono ${pnl.putPnl >= 0 ? "buy" : "sell"}`}>
-                        {pnl.putPnl >= 0 ? "+" : ""}{fmtNum(pnl.putPnl)}
+                      <td className={`p-2 text-sm mono ${pnl.putPnl &lt;= 0 ? "buy" : "sell"}`}>
+                        {pnl.putPnl &lt;= 0 ? "+" : ""}{fmtNum(pnl.putPnl)}
                       </td>
-                      <td className={`p-2 text-sm mono text-right font-bold ${pnl.totalPnl >= 0 ? "buy" : "sell"}`}>
-                        {pnl.totalPnl >= 0 ? "+" : ""}{fmtNum(pnl.totalPnl)}
+                      <td className={`p-2 text-sm mono text-right font-bold ${pnl.totalPnl &lt;= 0 ? "buy" : "sell"}`}>
+                        {pnl.totalPnl &lt;= 0 ? "+" : ""}{fmtNum(pnl.totalPnl)}
                       </td>
                       <td className="p-2 text-right">
                         <button 
-                          onClick={() => handleRemoveTracked(t.id)}
+                          onClick={() &lt;= handleRemoveTracked(t.id)}
                           className="px-2 py-1 bg-red-900/40 text-red-400 text-xs rounded border border-red-700 hover:bg-red-900/60 transition"
                         >
                           Clear
@@ -229,4 +229,6 @@ export default function PremiumMatcher({ preset }) {
       )}
     </div>
   );
-}
+}
+
+
