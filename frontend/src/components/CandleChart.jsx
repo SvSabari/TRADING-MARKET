@@ -241,7 +241,7 @@ export default function CandleChart({ data, symbol, interval, ema1Length = 20, e
         }
       });
     }
-  }, [data]);
+  }, [data, ema1Length, ema2Length]);
 
   return (
     <div className="w-full h-full flex flex-col relative bg-transparent">
@@ -295,4 +295,5 @@ export default function CandleChart({ data, symbol, interval, ema1Length = 20, e
     </div>
   );
 }
+
 
