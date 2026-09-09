@@ -208,7 +208,7 @@ export default function ChartWidget({
         ) : chartData.length > 0 ? (
           <>
             <div className="flex-1 min-w-0 h-full">
-              <CandleChart key={`${localSymbol}-${globalDataSource}-${localInterval}`} data={chartData} symbol={localSymbol} interval={localInterval} ema1Length={ema1} ema2Length={ema2} />
+              <CandleChart key={`${localSymbol}-${globalDataSource}-${localInterval}-${ema1}-${ema2}`} data={chartData} symbol={localSymbol} interval={localInterval} ema1Length={ema1} ema2Length={ema2} />
             </div>
             {showTape && (
               <TimeAndSales symbol={localSymbol} />
