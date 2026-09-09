@@ -57,7 +57,7 @@ async def lifespan(app: FastAPI):
     options_sweeper.start()
     
     # Snapshot system for POI
-    await load_snapshot()
+    asyncio.create_task(load_snapshot())
     asyncio.create_task(snapshot_loop())
     try:
         await ensure_idem_indexes()
@@ -131,3 +131,4 @@ for r in (
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("server:app", host="0.0.0.0", port=8001, reload=True)
+

@@ -28,34 +28,41 @@ async def stop_capture():
     return await get_capture_status()
 
 
-@router.get("/files")
-async def list_files():
-    symbols = await db.market_candles.distinct("symbol")
-    out = []
-    today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    for s in symbols:
-        count = await db.market_candles.count_documents({"symbol": s})
-        # Fetch the real last_modified time from the most recent tick
-        latest = await db.market_candles.find_one({"symbol": s}, sort=[("ts", -1)])
-        if latest:
-            ts_obj = latest["ts"]
-            if ts_obj.tzinfo is None:
-                ts_obj = ts_obj.replace(tzinfo=timezone.utc)
-            last_mod = ts_obj.isoformat()
-        else:
-            last_mod = datetime.now(timezone.utc).isoformat()
-        
-        out.append({
-            "date": today_str,
-            "symbol": s,
-            "filename": f"{s}.csv",
-            "path": s,
-            "size_bytes": count * 128,  # mock size
-            "row_count": count,
-            "last_modified": last_mod
-        })
-    return {"files": out}
 
+@router.get('/files')
+async def list_files():
+    out = []
+    today_str = datetime.now(timezone.utc).strftime('%Y-%m-%d')
+    try:
+        pipeline = [
+            {'$group': {
+                '_id': '$symbol',
+                'count': {'$sum': 1},
+                'latest': {'$max': '$ts'}
+            }}
+        ]
+        async for doc in db.market_candles.aggregate(pipeline):
+            s = doc['_id']
+            count = doc['count']
+            ts_obj = doc['latest']
+            if ts_obj:
+                if ts_obj.tzinfo is None:
+                    ts_obj = ts_obj.replace(tzinfo=timezone.utc)
+                last_mod = ts_obj.isoformat()
+            else:
+                last_mod = datetime.now(timezone.utc).isoformat()
+            out.append({
+                'date': today_str,
+                'symbol': s,
+                'filename': f'{s}.csv',
+                'path': s,
+                'size_bytes': count * 128,
+                'row_count': count,
+                'last_modified': last_mod
+            })
+    except Exception as e:
+        print('Error in list_files:', e)
+    return {'files': out}
 
 @router.get("/preview")
 async def get_data_preview(path: str, interval: str = "1", limit: int = 1000):
@@ -151,4 +158,6 @@ async def debug_mongo():
     url = os.environ.get('MONGO_URL', '')
     uri = os.environ.get('MONGO_URI', '')
     return {'MONGO_URL': url[:15] + '...', 'MONGO_URI': uri[:15] + '...', 'USE_IN_MEMORY': os.environ.get('USE_IN_MEMORY_DB', '')}
+
+
 
