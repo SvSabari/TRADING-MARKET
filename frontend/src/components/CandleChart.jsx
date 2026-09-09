@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { createChart, ColorType, CandlestickSeries, HistogramSeries, LineSeries } from "lightweight-charts";
 import { calculateEMA, calculateVWAP } from "./indicators";
 
-export default function CandleChart({ data, symbol, interval }) {
+export default function CandleChart({ data, symbol, interval, ema1Length = 20, ema2Length = 50 }) {
   const chartContainerRef = useRef(null);
   const legendRef = useRef(null);
   const chartRef = useRef(null);
@@ -155,8 +155,8 @@ export default function CandleChart({ data, symbol, interval }) {
               </div>
               <div style="font-size: 11px; font-family: monospace; display: flex; gap: 8px; text-shadow: -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff, 0 0 4px #fff;">
                 <span style="color: #333">Vol <span style="color: #26a69a">${volFmt}</span></span>
-                <span style="color: #2196F3">EMA20 <strong>${ema20Str}</strong></span>
-                <span style="color: #FF9800">EMA50 <strong>${ema50Str}</strong></span>
+                <span style="color: #2196F3">EMA${ema1Length} <strong>${ema20Str}</strong></span>
+                <span style="color: #FF9800">EMA${ema2Length} <strong>${ema50Str}</strong></span>
                 <span style="color: #9C27B0">VWAP <strong>${vwapStr}</strong></span>
               </div>
             </div>
@@ -197,8 +197,8 @@ export default function CandleChart({ data, symbol, interval }) {
       .sort((a, b) => a.time - b.time)
       .filter((r, idx, arr) => idx === 0 || r.time !== arr[idx - 1].time);
 
-    const ema20Data = calculateEMA(chartData, 20);
-    const ema50Data = calculateEMA(chartData, 50);
+    const ema20Data = calculateEMA(chartData, ema1Length);
+    const ema50Data = calculateEMA(chartData, ema2Length);
     const vwapData = calculateVWAP(chartData);
 
     if (!loadedRef.current) {
@@ -295,3 +295,4 @@ export default function CandleChart({ data, symbol, interval }) {
     </div>
   );
 }
+

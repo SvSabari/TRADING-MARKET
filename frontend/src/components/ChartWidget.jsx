@@ -21,6 +21,9 @@ export default function ChartWidget({
   const [chartData, setChartData] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [showTape, setShowTape] = useState(false);
+  const [ema1, setEma1] = useState(20);
+  const [ema2, setEma2] = useState(50);
+  const [showSettings, setShowSettings] = useState(false);
   const { setGlobalSymbol } = useSymbol();
 
   useEffect(() => {
@@ -106,12 +109,38 @@ export default function ChartWidget({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [localSymbol, localInterval, globalDataSource, fromDate, toDate]); 
 
-  const INDICES = ["NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY", "SENSEX", "NIFTYNXT50"];
+  const INDICES = ["NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY", "SENSEX", "NIFTYNXT50"];    // Custom Header Right for the Panel
+    const panelRight = (
+      <div className="flex items-center gap-1.5 relative">
+        <button 
+          className="px-2 py-0.5 text-[10px] font-bold uppercase rounded"
+          style={{ background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text-secondary)" }}
+          onClick={() => setShowSettings(!showSettings)}
+        >
+          Indicators
+        </button>
+        
+        {showSettings && (
+          <div className="absolute top-full right-0 mt-1 p-3 rounded shadow-xl z-50 flex flex-col gap-3" style={{ background: "var(--surface)", border: "1px solid var(--border)", minWidth: "160px" }}>
+             <div className="text-[10px] font-bold uppercase text-[var(--text-secondary)] mb-1">Moving Averages</div>
+             <div className="flex items-center justify-between gap-2">
+               <label className="text-[11px] font-bold" style={{color: "#2196F3"}}>EMA 1</label>
+               <input type="number" className="w-16 p-1 text-[11px] outline-none rounded bg-[var(--bg)] border border-[var(--border)] text-[var(--text-primary)] text-center" value={ema1} onChange={e => setEma1(Number(e.target.value)||1)} />
+             </div>
+             <div className="flex items-center justify-between gap-2">
+               <label className="text-[11px] font-bold" style={{color: "#FF9800"}}>EMA 2</label>
+               <input type="number" className="w-16 p-1 text-[11px] outline-none rounded bg-[var(--bg)] border border-[var(--border)] text-[var(--text-primary)] text-center" value={ema2} onChange={e => setEma2(Number(e.target.value)||1)} />
+             </div>
+             <button 
+               className="mt-2 w-full py-1 text-[10px] font-bold uppercase rounded bg-[var(--brand)] text-white"
+               onClick={() => setShowSettings(false)}
+             >
+               Apply
+             </button>
+          </div>
+        )}
 
-  // Custom Header Right for the Panel
-  const panelRight = (
-    <div className="flex items-center gap-1.5">
-      <select 
+        <select  
         className="outline-none cursor-pointer font-bold uppercase rounded shadow-sm"
         style={{ background: "var(--surface)", border: "1px solid var(--border)", color: INDICES.includes(localSymbol) ? "var(--brand)" : "var(--text-secondary)", fontSize: "11px", padding: "2px 4px" }}
         value={INDICES.includes(localSymbol) ? localSymbol : ""}
@@ -177,7 +206,7 @@ export default function ChartWidget({
         ) : chartData.length > 0 ? (
           <>
             <div className="flex-1 min-w-0 h-full">
-              <CandleChart key={`${localSymbol}-${globalDataSource}-${localInterval}`} data={chartData} symbol={localSymbol} interval={localInterval} />
+              <CandleChart key={`${localSymbol}-${globalDataSource}-${localInterval}`} data={chartData} symbol={localSymbol} interval={localInterval} ema1Length={ema1} ema2Length={ema2} />
             </div>
             {showTape && (
               <TimeAndSales symbol={localSymbol} />
@@ -192,3 +221,5 @@ export default function ChartWidget({
     </Panel>
   );
 }
+
+
