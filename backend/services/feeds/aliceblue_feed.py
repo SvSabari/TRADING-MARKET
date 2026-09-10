@@ -111,6 +111,10 @@ class AliceblueFeed(LiveFeed):
         self.connected = True
         self.last_error = None
         logger.info("Alice Blue WebSocket Connected.")
+        # On reconnect, we must resubscribe to all tokens because Alice Blue drops them!
+        if getattr(self, "symbol_map", None) and getattr(self, "_loop", None):
+            import asyncio
+            asyncio.run_coroutine_threadsafe(self.add_symbols([], force=True), self._loop)
 
     def _socket_close(self):
         self.connected = False
@@ -121,19 +125,13 @@ class AliceblueFeed(LiveFeed):
         logger.warning("Alice Blue WebSocket Error: %s", error)
 
     async def add_symbols(self, tokens: list[str], force: bool = False) -> None:
-        if not self._alice or not getattr(self._alice, "ws", None):
+        if not self._alice or getattr(self._alice, "ws", None) is None:
             return
             
         new_tokens_added = False
         
-        # We no longer aggressively delete old tokens because it breaks multi-symbol tracking.
-        # Alice Blue limit is supposedly 3000 tokens on V2 API. We cap the dict size at 2500 to be safe.
-        keys_to_remove = []
-        if len(self.symbol_map) > 2500:
-            keys_to_remove = [k for k in self.symbol_map.keys() if ("NFO|" in k or "BFO|" in k) and k not in tokens]
-            for k in keys_to_remove[:500]: # Only remove enough to stay under limit
-                del self.symbol_map[k]
-            
+        # User requested: Do not silently delete tokens. Remove 2500 cap.
+        # Keep everything requested so we can test the true Alice Blue limit vs payload limit.
         for tok in tokens:
             if tok not in self.symbol_map:
                 self.symbol_map[tok] = tok
@@ -142,34 +140,47 @@ class AliceblueFeed(LiveFeed):
         if not self.symbol_map:
             return
             
-        if not new_tokens_added and not keys_to_remove and not force:
+        if not new_tokens_added and not force:
             return
             
-        from collections import namedtuple
-        Instrument = namedtuple('Instrument', ['exchange', 'token', 'symbol', 'name', 'expiry', 'lot_size'])
+        # Generate complete token list, remove duplicates
+        unique_tokens = list(set(self.symbol_map.keys()))
+        logger.info(f"Alice Blue total requested unique tokens to subscribe: {len(unique_tokens)}")
         
-        instruments = []
-        # MUST subscribe to ALL symbols in symbol_map because the Alice Blue server overwrites the entire list on each call.
-        for tok in self.symbol_map.keys():
+        all_scripts = []
+        for tok in unique_tokens:
             if "|" in tok:
                 exch, tkn = tok.split("|", 1)
-                instruments.append(Instrument(exch, int(tkn), "", "", "", ""))
+                all_scripts.append(f"{exch}|{tkn}")
             else:
                 exch = "NSE"
                 if tok == "1":
                     exch = "BSE"
-                elif tok not in ALICEBLUE_TOKENS:
+                elif tok not in ["NIFTY", "BANKNIFTY", "FINNIFTY", "SENSEX", "MIDCPNIFTY"]:
                     exch = "NFO"
-                instruments.append(Instrument(exch, int(tok), "", "", "", ""))
-                    
-        if instruments:
-            logger.info("Alice Blue subscribing to %d instruments.", len(instruments))
+                all_scripts.append(f"{exch}|{tok}")
+                
+        if all_scripts:
+            import json
+            # Split into chunks of 25 to bypass potential payload size limits (community suggestion)
+            chunk_size = 25
+            total_chunks = (len(all_scripts) + chunk_size - 1) // chunk_size
+            logger.info(f"Alice Blue subscribing to {len(all_scripts)} instruments across {total_chunks} chunks of {chunk_size}.")
+            
             self._alice.market_depth = False
-            try:
-                self._alice.subscribe(instruments)
-            except Exception as e:
-                self.last_error = str(e)
-                logger.error("Alice Blue subscribe error: %s", e)
+            for i in range(0, len(all_scripts), chunk_size):
+                chunk = all_scripts[i:i+chunk_size]
+                payload = "#".join(chunk)
+                data = {
+                    "k": payload,
+                    "t": "t"
+                }
+                try:
+                    self._alice.ws.send(json.dumps(data))
+                    logger.info(f"Alice Blue subscribe chunk {i//chunk_size + 1}/{total_chunks} sent: {len(chunk)} tokens")
+                except Exception as e:
+                    self.last_error = str(e)
+                    logger.error("Alice Blue subscribe chunk error: %s", e)
 
     async def connect(self) -> None:
         self._loop = asyncio.get_running_loop()
