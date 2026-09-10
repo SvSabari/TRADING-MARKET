@@ -128,6 +128,7 @@ class AliceblueFeed(LiveFeed):
         
         # We no longer aggressively delete old tokens because it breaks multi-symbol tracking.
         # Alice Blue limit is supposedly 3000 tokens on V2 API. We cap the dict size at 2500 to be safe.
+        keys_to_remove = []
         if len(self.symbol_map) > 2500:
             keys_to_remove = [k for k in self.symbol_map.keys() if ("NFO|" in k or "BFO|" in k) and k not in tokens]
             for k in keys_to_remove[:500]: # Only remove enough to stay under limit
