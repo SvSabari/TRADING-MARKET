@@ -56,19 +56,8 @@ export default function Topbar() {
           {mktStatus.label} · {new Date().toLocaleDateString("en-IN")}
         </span>
       </div>
-      <div className="ticker-row flex-1 overflow-hidden" data-testid="ticker-row">
-        {ticks.map((t) => {
-          const prevPx = prevPrices[t.symbol];
-          const flash = prevPx ? (t.ltp > prevPx ? "flash-up" : t.ltp < prevPx ? "flash-dn" : "") : "";
-          const color = t.change_pct >= 0 ? "buy" : "sell";
-          return (
-            <span key={t.symbol} className={`ticker-item ${flash} px-1`} data-testid={`ticker-${t.symbol}`}>
-              <span className="dim">{t.symbol}</span>
-              <span>{fmtNum(t.ltp)}</span>
-              <span className={color}>{fmtPct(t.change_pct, 2)}</span>
-            </span>
-          );
-        })}
+      <div className="flex-1 flex justify-center items-center overflow-hidden" data-testid="project-title">
+        <span className="font-bold tracking-widest text-[var(--brand)] text-lg" style={{ fontFamily: "Space Grotesk, sans-serif" }}>TRADING TERMINAL</span>
       </div>
       <Link to="/notifications" data-testid="notifications-btn" className="btn-ghost btn relative shrink-0">
         <Bell size={14} weight="bold" />
