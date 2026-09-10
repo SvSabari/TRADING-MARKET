@@ -153,10 +153,11 @@ class AliceblueFeed(LiveFeed):
                 exch, tkn = tok.split("|", 1)
                 all_scripts.append(f"{exch}|{tkn}")
             else:
+                from services.instrument_map import ALICEBLUE_TOKENS
                 exch = "NSE"
                 if tok == "1":
                     exch = "BSE"
-                elif tok not in ["NIFTY", "BANKNIFTY", "FINNIFTY", "SENSEX", "MIDCPNIFTY"]:
+                elif tok not in ALICEBLUE_TOKENS:
                     exch = "NFO"
                 all_scripts.append(f"{exch}|{tok}")
                 
