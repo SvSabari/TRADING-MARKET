@@ -22,7 +22,26 @@ async def get_cached_or_build(symbol: str, user_id: str, expiry: str = None):
     if cache_key in options_sweeper.cache:
         now = datetime.now(timezone.utc).timestamp()
         if now - options_sweeper.last_update.get(cache_key, 0) < cache_ttl:
-            return options_sweeper.cache[cache_key]
+            chain = options_sweeper.cache[cache_key]
+            # Inject live prices from tick_engine before returning so Option Chain UI is live
+            from services.market_data import tick_engine
+            if chain and chain.get("rows"):
+                # Also update spot price
+                live_spot = tick_engine.prices.get(symbol, 0)
+                if live_spot > 0:
+                    chain["spot"] = live_spot
+                for row in chain["rows"]:
+                    ce_tok = row.get("ce_token", "")
+                    pe_tok = row.get("pe_token", "")
+                    if ce_tok and ce_tok in tick_engine.prices:
+                        row["ce_ltp"] = tick_engine.prices[ce_tok]
+                        row["ce_oi"] = tick_engine.oi_cache.get(ce_tok, row.get("ce_oi", 0))
+                        row["ce_change_ltp"] = tick_engine.change_pcts.get(ce_tok, row.get("ce_change_ltp", 0.0))
+                    if pe_tok and pe_tok in tick_engine.prices:
+                        row["pe_ltp"] = tick_engine.prices[pe_tok]
+                        row["pe_oi"] = tick_engine.oi_cache.get(pe_tok, row.get("pe_oi", 0))
+                        row["pe_change_ltp"] = tick_engine.change_pcts.get(pe_tok, row.get("pe_change_ltp", 0.0))
+            return chain
 
     chain = await build_option_chain(db, user_id, symbol, expiry)
     if chain and chain.get("rows") and len(chain["rows"]) > 0:
