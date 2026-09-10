@@ -1,42 +1,36 @@
 import asyncio
 from typing import List, Dict
 
-_CHAIN_CACHE = {}
-
 async def get_premium_matches_for_symbols(db, user_id: str, symbols: List[str], range_size: int = 10, max_diff: float = 5.0):
     from routers.analytics_routes import get_cached_or_build
     from services.market_data import tick_engine
-    import time
     
-    global _CHAIN_CACHE
+    tasks = []
+    for sym in symbols:
+        tasks.append(get_cached_or_build(sym, user_id))
+        
+    # Gather chunks of 5 to prevent extreme event loop blocking
+    results = []
+    chunk_size = 5
+    for i in range(0, len(tasks), chunk_size):
+        chunk = await asyncio.gather(*tasks[i:i+chunk_size], return_exceptions=True)
+        results.extend(chunk)
+        await asyncio.sleep(0.01)
     
     all_matches = []
     
-    for symbol in symbols:
-        # Get chain structure from cache or build it once
-        if symbol not in _CHAIN_CACHE:
-            chain = await get_cached_or_build(symbol, user_id)
-            if isinstance(chain, Exception) or chain is None:
-                continue
-            # Keep a lightweight copy
-            _CHAIN_CACHE[symbol] = {
-                "rows": chain.get("rows", []),
-                "atm": chain.get("atm")
-            }
-            
-        cached_chain = _CHAIN_CACHE[symbol]
-        rows = cached_chain["rows"]
-        # Update spot from tick_engine to re-calculate ATM if needed
-        spot = tick_engine.prices.get(symbol, 0)
-        if spot == 0:
-            spot = cached_chain.get("atm", 0)
-        
-        if not rows or spot == 0:
+    for idx, chain in enumerate(results):
+        if isinstance(chain, Exception) or chain is None:
             continue
             
-        # Re-calculate ATM based on live spot
-        closest_strike = min(rows, key=lambda r: abs(r['strike'] - spot))['strike']
-        atm = closest_strike
+        rows = chain.get('rows', [])
+        atm = chain.get('atm')
+        symbol = symbols[idx]
+        
+        spot = chain.get('spot', 0)
+        
+        if not rows or spot == 0 or atm is None:
+            continue
             
         sorted_rows = sorted(rows, key=lambda r: r['strike'])
         
@@ -59,16 +53,8 @@ async def get_premium_matches_for_symbols(db, user_id: str, symbols: List[str], 
             for j in range(low, high + 1):
                 put_row = sorted_rows[j]
                 
-                # Fetch live prices instantly from tick_engine
-                ce_sym = f"{symbol}_{call_row['strike']}_CE"
-                pe_sym = f"{symbol}_{put_row['strike']}_PE"
-                
-                ce_ltp = tick_engine.prices.get(ce_sym, 0.0)
-                pe_ltp = tick_engine.prices.get(pe_sym, 0.0)
-                
-                # Fallback to cached close prices if off-hours
-                if ce_ltp == 0.0: ce_ltp = call_row.get('ce_ltp', 0)
-                if pe_ltp == 0.0: pe_ltp = put_row.get('pe_ltp', 0)
+                ce_ltp = call_row.get('ce_ltp', 0)
+                pe_ltp = put_row.get('pe_ltp', 0)
                 
                 if ce_ltp > 0 and pe_ltp > 0:
                     diff = abs(ce_ltp - pe_ltp)

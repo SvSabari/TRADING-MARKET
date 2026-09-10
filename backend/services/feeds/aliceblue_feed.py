@@ -126,11 +126,12 @@ class AliceblueFeed(LiveFeed):
             
         new_tokens_added = False
         
-        # To prevent exceeding Alice Blue's ~250 token limit, we clear out old NFO and BFO tokens
-        # when a new option chain is requested. We keep the base indices/equities (NSE/BSE).
-        keys_to_remove = [k for k in self.symbol_map.keys() if ("NFO|" in k or "BFO|" in k) and k not in tokens]
-        for k in keys_to_remove:
-            del self.symbol_map[k]
+        # We no longer aggressively delete old tokens because it breaks multi-symbol tracking.
+        # Alice Blue limit is supposedly 3000 tokens on V2 API. We cap the dict size at 2500 to be safe.
+        if len(self.symbol_map) > 2500:
+            keys_to_remove = [k for k in self.symbol_map.keys() if ("NFO|" in k or "BFO|" in k) and k not in tokens]
+            for k in keys_to_remove[:500]: # Only remove enough to stay under limit
+                del self.symbol_map[k]
             
         for tok in tokens:
             if tok not in self.symbol_map:
