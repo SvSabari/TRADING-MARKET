@@ -26,8 +26,10 @@ async def get_premium_matches_for_symbols(db, user_id: str, symbols: List[str], 
             
         cached_chain = _CHAIN_CACHE[symbol]
         rows = cached_chain["rows"]
-        # Update spot from tick_engine to re-calculate ATM if needed, but for speed we just use the cached ATM or spot
+        # Update spot from tick_engine to re-calculate ATM if needed
         spot = tick_engine.prices.get(symbol, 0)
+        if spot == 0:
+            spot = cached_chain.get("atm", 0)
         
         if not rows or spot == 0:
             continue
@@ -63,6 +65,10 @@ async def get_premium_matches_for_symbols(db, user_id: str, symbols: List[str], 
                 
                 ce_ltp = tick_engine.prices.get(ce_sym, 0.0)
                 pe_ltp = tick_engine.prices.get(pe_sym, 0.0)
+                
+                # Fallback to cached close prices if off-hours
+                if ce_ltp == 0.0: ce_ltp = call_row.get('ce_ltp', 0)
+                if pe_ltp == 0.0: pe_ltp = put_row.get('pe_ltp', 0)
                 
                 if ce_ltp > 0 and pe_ltp > 0:
                     diff = abs(ce_ltp - pe_ltp)

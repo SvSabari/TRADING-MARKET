@@ -101,8 +101,12 @@ async def build_aliceblue_chain(alice, symbol: str = "NIFTY", expiry: str = None
             spot = tick_engine.prices.get(symbol)
 
         if not spot:
-            with open("alice_debug.txt", "w") as f: f.write(f"Aliceblue chain returning None: spot is {spot}\n")
-            return None
+            unique_strikes = sorted(df["Strike"].unique())
+            if unique_strikes:
+                spot = unique_strikes[len(unique_strikes)//2]
+            else:
+                with open("alice_debug.txt", "w") as f: f.write(f"Aliceblue chain returning None: spot is {spot}\n")
+                return None
             
         atm = round(spot / step) * step
         
