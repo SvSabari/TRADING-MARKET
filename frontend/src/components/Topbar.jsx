@@ -2,14 +2,11 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { fmtNum, fmtPct } from "@/lib/format";
 import { Bell, SignOut, User } from "@phosphor-icons/react";
 import { getMarketStatus } from "@/lib/marketHours";
 
 export default function Topbar() {
   const { user, logout } = useAuth();
-  const [ticks, setTicks] = useState([]);
-  const [prevPrices, setPrevPrices] = useState({});
   const [unread, setUnread] = useState(0);
   const [mktStatus, setMktStatus] = useState(getMarketStatus());
 
@@ -22,30 +19,15 @@ export default function Topbar() {
 
   useEffect(() => {
     let cancel = false;
-    const fetchSnap = async () => {
-      try {
-        const { data } = await api.get("/market/snapshot");
-        if (cancel) return;
-        const sorted = [...data.ticks].sort((a, b) => Math.abs(b.change_pct) - Math.abs(a.change_pct)).slice(0, 14);
-        setTicks((curr) => {
-          // before updating, copy current ltps into prevPrices for flash class
-          const snap = {};
-          curr.forEach((t) => { snap[t.symbol] = t.ltp; });
-          setPrevPrices(snap);
-          return sorted;
-        });
-      } catch (e) { console.error("api fetch failed:", e); }
-    };
     const fetchNotifs = async () => {
       try {
         const { data } = await api.get("/notifications?limit=1");
         if (!cancel) setUnread(data.unread || 0);
       } catch (e) { console.error("api fetch failed:", e); }
     };
-    fetchSnap(); fetchNotifs();
-    const i1 = setInterval(fetchSnap, 2000);
+    fetchNotifs();
     const i2 = setInterval(fetchNotifs, 5000);
-    return () => { cancel = true; clearInterval(i1); clearInterval(i2); };
+    return () => { cancel = true; clearInterval(i2); };
   }, []);
 
   return (
