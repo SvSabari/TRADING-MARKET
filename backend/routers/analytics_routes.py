@@ -15,9 +15,9 @@ async def get_cached_or_build(symbol: str, user_id: str, expiry: str = None):
     
     cache_key = f"{symbol}_{expiry}" if expiry else symbol
     
-    # Use longer TTL for Breeze due to strict API rate limits
+    # Use extreme TTL for AliceBlue since we will manually update prices via tokens
     active_name = getattr(live_feed_manager._active, "name", "") if live_feed_manager._active else ""
-    cache_ttl = 60 if active_name == "breeze" else 5
+    cache_ttl = 86400 if active_name == "aliceblue" else (60 if active_name == "breeze" else 5)
 
     if cache_key in options_sweeper.cache:
         now = datetime.now(timezone.utc).timestamp()

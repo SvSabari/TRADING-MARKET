@@ -4,33 +4,36 @@ from typing import List, Dict
 async def get_premium_matches_for_symbols(db, user_id: str, symbols: List[str], range_size: int = 10, max_diff: float = 5.0):
     from routers.analytics_routes import get_cached_or_build
     from services.market_data import tick_engine
+    from services.live_feed_manager import live_feed_manager
     
     tasks = []
     for sym in symbols:
         tasks.append(get_cached_or_build(sym, user_id))
         
-    # Gather chunks of 5 to prevent extreme event loop blocking
-    results = []
-    chunk_size = 5
-    for i in range(0, len(tasks), chunk_size):
-        chunk = await asyncio.gather(*tasks[i:i+chunk_size], return_exceptions=True)
-        results.extend(chunk)
-        await asyncio.sleep(0.01)
+    results = await asyncio.gather(*tasks, return_exceptions=True)
     
     all_matches = []
+    tokens_to_subscribe = []
     
     for idx, chain in enumerate(results):
         if isinstance(chain, Exception) or chain is None:
             continue
             
         rows = chain.get('rows', [])
-        atm = chain.get('atm')
         symbol = symbols[idx]
         
-        spot = chain.get('spot', 0)
+        # Spot fallback logic
+        spot = tick_engine.prices.get(symbol, 0)
+        if spot == 0:
+            spot = chain.get("spot", 0)
+            if spot == 0:
+                spot = chain.get("atm", 0)
         
-        if not rows or spot == 0 or atm is None:
+        if not rows or spot == 0:
             continue
+            
+        closest_strike = min(rows, key=lambda r: abs(r['strike'] - spot))['strike']
+        atm = closest_strike
             
         sorted_rows = sorted(rows, key=lambda r: r['strike'])
         
@@ -48,13 +51,28 @@ async def get_premium_matches_for_symbols(db, user_id: str, symbols: List[str], 
         low = max(0, atm_index - range_size)
         high = min(len(sorted_rows) - 1, atm_index + range_size)
         
+        # Subscribe to required tokens to ensure tick_engine receives them
+        for i in range(low, high + 1):
+            ce_tok = sorted_rows[i].get('ce_token')
+            if ce_tok: tokens_to_subscribe.append(ce_tok)
+            pe_tok = sorted_rows[i].get('pe_token')
+            if pe_tok: tokens_to_subscribe.append(pe_tok)
+        
         for i in range(low, high + 1):
             call_row = sorted_rows[i]
             for j in range(low, high + 1):
                 put_row = sorted_rows[j]
                 
-                ce_ltp = call_row.get('ce_ltp', 0)
-                pe_ltp = put_row.get('pe_ltp', 0)
+                # Fetch live prices using real broker tokens
+                ce_tok = call_row.get('ce_token', '')
+                pe_tok = put_row.get('pe_token', '')
+                
+                ce_ltp = tick_engine.prices.get(ce_tok, 0.0)
+                pe_ltp = tick_engine.prices.get(pe_tok, 0.0)
+                
+                # Fallback to cached close prices if off-hours
+                if ce_ltp == 0.0: ce_ltp = call_row.get('ce_ltp', 0)
+                if pe_ltp == 0.0: pe_ltp = put_row.get('pe_ltp', 0)
                 
                 if ce_ltp > 0 and pe_ltp > 0:
                     diff = abs(ce_ltp - pe_ltp)
@@ -69,6 +87,9 @@ async def get_premium_matches_for_symbols(db, user_id: str, symbols: List[str], 
                             "diff": round(diff, 2)
                         })
                         
-    # Sort all matches globally by diff
+    # Run subscription in background so we don't block
+    if tokens_to_subscribe and live_feed_manager._active:
+        asyncio.create_task(live_feed_manager.add_symbols(list(set(tokens_to_subscribe))))
+        
     all_matches.sort(key=lambda x: x['diff'])
     return all_matches

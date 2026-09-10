@@ -202,6 +202,8 @@ async def build_aliceblue_chain(alice, symbol: str = "NIFTY", expiry: str = None
 
             rows.append({
                 "strike": k,
+                "ce_token": ce_token if not ce_row.empty else "",
+                "pe_token": pe_token if not pe_row.empty else "",
                 "ce_oi": ce_oi, "ce_iv": 0.0, "ce_ltp": ce_ltp, "ce_change_ltp": ce_change_ltp, "ce_change_oi": ce_change_oi,
                 "ce_trend": get_trend(ce_change_oi, ce_change_ltp),
                 "pe_oi": pe_oi, "pe_iv": 0.0, "pe_ltp": pe_ltp, "pe_change_ltp": pe_change_ltp, "pe_change_oi": pe_change_oi,
