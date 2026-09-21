@@ -21,8 +21,11 @@ export default function ChartWidget({
   const [chartData, setChartData] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [showTape, setShowTape] = useState(false);
-  const [ema1, setEma1] = useState(20);
-  const [ema2, setEma2] = useState(50);
+  const [indicators, setIndicators] = useState([
+    { id: 'i1', type: 'EMA', period: 20 },
+    { id: 'i2', type: 'EMA', period: 50 },
+    { id: 'i3', type: 'VWAP' }
+  ]);
   const { setGlobalSymbol } = useSymbol();
 
   useEffect(() => {
@@ -143,14 +146,44 @@ export default function ChartWidget({
         <option value="60">1h</option>
         <option value="D">1D</option>
       </select>
+      <select 
+        className="outline-none cursor-pointer font-bold uppercase rounded shadow-sm"
+        style={{ background: "var(--brand)", border: "1px solid var(--brand)", color: "white", fontSize: "11px", padding: "2px 4px" }}
+        value=""
+        onChange={(e) => {
+          if(e.target.value) {
+            setIndicators([...indicators, { id: Date.now().toString(), type: e.target.value, period: 20 }]);
+          }
+        }}
+      >
+        <option value="">+ IND</option>
+        <option value="EMA">EMA</option>
+        <option value="SMA">SMA</option>
+        <option value="BOLL">Bollinger</option>
+        <option value="VWAP">VWAP</option>
+      </select>
 
-      <div className="flex items-center gap-1 bg-[var(--surface)] border border-[var(--border)] rounded px-1" style={{ fontSize: "11px" }}>
-        <span className="text-[var(--text-secondary)] font-semibold">EMA1</span>
-        <input type="number" value={ema1} onChange={e => setEma1(parseInt(e.target.value) || 20)} className="w-8 outline-none bg-transparent text-center font-bold" />
-      </div>
-      <div className="flex items-center gap-1 bg-[var(--surface)] border border-[var(--border)] rounded px-1" style={{ fontSize: "11px" }}>
-        <span className="text-[var(--text-secondary)] font-semibold">EMA2</span>
-        <input type="number" value={ema2} onChange={e => setEma2(parseInt(e.target.value) || 50)} className="w-8 outline-none bg-transparent text-center font-bold" />
+      <div className="flex items-center gap-1 overflow-x-auto hide-scrollbar max-w-[300px]">
+        {indicators.map((ind) => (
+          <div key={ind.id} className="flex items-center gap-1 bg-[var(--surface)] border border-[var(--border)] rounded px-1 shrink-0" style={{ fontSize: "11px" }}>
+            <span className="text-[var(--text-secondary)] font-semibold">{ind.type}</span>
+            {ind.type !== 'VWAP' && (
+              <input 
+                type="number" 
+                value={ind.period} 
+                onChange={(e) => {
+                  const newInds = indicators.map(i => i.id === ind.id ? { ...i, period: parseInt(e.target.value) || 20 } : i);
+                  setIndicators(newInds);
+                }}
+                className="w-8 outline-none bg-transparent text-center font-bold" 
+              />
+            )}
+            <button 
+              onClick={() => setIndicators(indicators.filter(i => i.id !== ind.id))}
+              className="text-[var(--text-secondary)] hover:text-red-500 ml-1 font-bold"
+            >×</button>
+          </div>
+        ))}
       </div>
 
       <button 
@@ -180,7 +213,7 @@ export default function ChartWidget({
         ) : chartData.length > 0 ? (
           <>
             <div className="flex-1 min-w-0 h-full">
-              <CandleChart key={`${localSymbol}-${globalDataSource}-${localInterval}-${ema1}-${ema2}`} data={chartData} symbol={localSymbol} interval={localInterval} ema1Length={ema1} ema2Length={ema2} />
+              <CandleChart key={`${localSymbol}-${globalDataSource}-${localInterval}`} data={chartData} symbol={localSymbol} interval={localInterval} indicators={indicators} />
             </div>
             {showTape && (
               <TimeAndSales symbol={localSymbol} />

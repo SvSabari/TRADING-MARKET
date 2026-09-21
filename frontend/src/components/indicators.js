@@ -40,3 +40,48 @@ export function calculateVWAP(data) {
   }
   return vwapData;
 }
+
+export function calculateSMA(data, period) {
+  if (!data || data.length === 0) return [];
+  const smaData = [];
+  for (let i = 0; i < data.length; i++) {
+    if (i < period - 1) {
+      // Not enough data yet, we can either skip or calculate partial average. Let's do partial.
+      let sum = 0;
+      for (let j = 0; j <= i; j++) sum += data[j].close;
+      smaData.push({ time: data[i].time, value: sum / (i + 1) });
+    } else {
+      let sum = 0;
+      for (let j = 0; j < period; j++) sum += data[i - j].close;
+      smaData.push({ time: data[i].time, value: sum / period });
+    }
+  }
+  return smaData;
+}
+
+export function calculateBollingerBands(data, period, stdDev = 2) {
+  if (!data || data.length === 0) return [];
+  const sma = calculateSMA(data, period);
+  const bbData = [];
+  
+  for (let i = 0; i < data.length; i++) {
+    let variance = 0;
+    const mean = sma[i].value;
+    const windowStart = Math.max(0, i - period + 1);
+    const windowSize = i - windowStart + 1;
+    
+    for (let j = windowStart; j <= i; j++) {
+      variance += Math.pow(data[j].close - mean, 2);
+    }
+    variance /= windowSize;
+    
+    const std = Math.sqrt(variance);
+    bbData.push({
+      time: data[i].time,
+      upper: mean + stdDev * std,
+      lower: mean - stdDev * std,
+      basis: mean
+    });
+  }
+  return bbData;
+}

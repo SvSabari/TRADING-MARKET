@@ -1,22 +1,27 @@
 import { useEffect, useRef } from "react";
 import { createChart, ColorType, CandlestickSeries, HistogramSeries, LineSeries } from "lightweight-charts";
-import { calculateEMA, calculateVWAP } from "./indicators";
+import { calculateEMA, calculateSMA, calculateBollingerBands, calculateVWAP } from "./indicators";
 
-export default function CandleChart({ data, symbol, interval, ema1Length = 20, ema2Length = 50 }) {
+export default function CandleChart({ data, symbol, interval, indicators = [] }) {
   const chartContainerRef = useRef(null);
   const legendRef = useRef(null);
   const chartRef = useRef(null);
   const seriesRef = useRef(null);
   const volumeSeriesRef = useRef(null);
   
-  const ema1Ref = useRef(null);
-  const ema2Ref = useRef(null);
-  const vwapRef = useRef(null);
+  // Track dynamically added series
+  const indicatorSeriesRef = useRef({});
 
   const loadedRef = useRef(false);
   const lastTimeRef = useRef(0);
 
-  // 1. Initialize Chart
+  // Colors for indicators
+  const getIndicatorColor = (type, index) => {
+    if (type === 'VWAP') return '#9C27B0'; // Purple
+    const colors = ['#2196F3', '#FF9800', '#E91E63', '#00BCD4', '#4CAF50', '#795548'];
+    return colors[index % colors.length];
+  };
+
   useEffect(() => {
     if (!chartContainerRef.current) return;
 
@@ -29,139 +34,87 @@ export default function CandleChart({ data, symbol, interval, ema1Length = 20, e
         vertLines: { color: "#e0e0e0" },
         horzLines: { color: "#e0e0e0" },
       },
-      timeScale: {
-        timeVisible: true,
-        secondsVisible: false,
-      },
-      rightPriceScale: {
-        scaleMargins: {
-          top: 0.15,    // Leave 15% space at the top so candles don't hide under legend
-          bottom: 0.25, // Leave 25% space at the bottom for the volume
-        },
-      },
-      autoSize: true, // Let lightweight-charts handle resizing natively!
+      timeScale: { timeVisible: true, secondsVisible: false },
+      rightPriceScale: { scaleMargins: { top: 0.15, bottom: 0.25 } },
+      autoSize: true,
     });
     chartRef.current = chart;
 
     const candlestickSeries = chart.addSeries(CandlestickSeries, {
-      upColor: "#26a69a",
-      downColor: "#ef5350",
-      borderVisible: true,
-      borderUpColor: "#26a69a",
-      borderDownColor: "#ef5350",
-      wickUpColor: "#26a69a",
-      wickDownColor: "#ef5350",
+      upColor: "#26a69a", downColor: "#ef5350", borderVisible: true,
+      borderUpColor: "#26a69a", borderDownColor: "#ef5350",
+      wickUpColor: "#26a69a", wickDownColor: "#ef5350",
     });
     seriesRef.current = candlestickSeries;
 
-    const ema1Series = chart.addSeries(LineSeries, {
-      color: '#2196F3',
-      lineWidth: 2,
-      crosshairMarkerVisible: false,
-      priceLineVisible: false,
-      lastValueVisible: true,
-      autoscaleInfoProvider: () => ({ priceRange: null }),
-    });
-    ema1Ref.current = ema1Series;
-
-    const ema2Series = chart.addSeries(LineSeries, {
-      color: '#FF9800',
-      lineWidth: 2,
-      crosshairMarkerVisible: false,
-      priceLineVisible: false,
-      lastValueVisible: true,
-      autoscaleInfoProvider: () => ({ priceRange: null }),
-    });
-    ema2Ref.current = ema2Series;
-
-    const vwapSeries = chart.addSeries(LineSeries, {
-      color: '#9C27B0',
-      lineWidth: 2,
-      crosshairMarkerVisible: false,
-      priceLineVisible: false,
-      lastValueVisible: true,
-      autoscaleInfoProvider: () => ({ priceRange: null }),
-    });
-    vwapRef.current = vwapSeries;
-
     const volumeSeries = chart.addSeries(HistogramSeries, {
-      color: '#26a69a',
-      priceFormat: { type: 'volume' },
-      priceScaleId: '', // set as an overlay by setting a blank priceScaleId
+      color: '#26a69a', priceFormat: { type: 'volume' }, priceScaleId: '',
     });
-    
-    // Scale volume to be at the bottom 15% of the chart so it doesn't overlap candles
-    volumeSeries.priceScale().applyOptions({
-      scaleMargins: {
-        top: 0.85, 
-        bottom: 0,
-      },
-    });
+    volumeSeries.priceScale().applyOptions({ scaleMargins: { top: 0.85, bottom: 0 } });
     volumeSeriesRef.current = volumeSeries;
 
     chart.subscribeCrosshairMove((param) => {
       if (!legendRef.current) return;
-      if (param.point === undefined || !param.time || param.point.x < 0 || param.point.x > chartContainerRef.current.clientWidth || param.point.y < 0 || param.point.y > chartContainerRef.current.clientHeight) {
-        // Crosshair is out of bounds, you could reset to latest candle, but keeping last hovered is fine
-      } else {
-        const currentData = param.seriesData.get(candlestickSeries);
-        const volumeData = param.seriesData.get(volumeSeries);
-        const ema1Data = param.seriesData.get(ema1Series);
-        const ema2Data = param.seriesData.get(ema2Series);
-        const vwapData = param.seriesData.get(vwapSeries);
+      if (param.point === undefined || !param.time) return;
 
-        if (currentData) {
-          const { open, high, low, close } = currentData;
-          const color = close >= open ? '#26a69a' : '#ef5350';
-          
-          const change = close - open;
-          const changePct = (change / open) * 100;
-          const sign = change >= 0 ? '+' : '';
-          
-          const intervalLabel = 
-            interval === '1' ? '1 min' :
-            interval === '3' ? '3 min' :
-            interval === '5' ? '5 min' :
-            interval === '10' ? '10min' :
-            interval === '15' ? '15 min' :
-            interval === '60' ? '1 hrs' :
-            interval === 'D' ? '1 days' : interval;
-            
-          const ema1Str = ema1Data ? ema1Data.value.toFixed(2) : 'N/A';
-          const ema2Str = ema2Data ? ema2Data.value.toFixed(2) : 'N/A';
-          const vwapStr = vwapData ? vwapData.value.toFixed(2) : 'N/A';
-          
-          let volFmt = '0';
-          if (volumeData) {
-            const v = volumeData.value;
-            if (v >= 1000000) volFmt = (v / 1000000).toFixed(2) + 'M';
-            else if (v >= 1000) volFmt = (v / 1000).toFixed(2) + 'k';
-            else volFmt = v.toString();
-          }
+      const currentData = param.seriesData.get(candlestickSeries);
+      const volumeData = param.seriesData.get(volumeSeries);
 
-          legendRef.current.innerHTML = `
-            <div style="display: flex; flex-direction: column; gap: 4px;">
-              <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap; line-height: 1;">
-                <div style="font-weight: 600; font-size: 13px; display: flex; align-items: center; gap: 4px; text-shadow: -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff, 0 0 4px #fff;">
-                  ${symbol || 'SYMBOL'} <span style="color: #888">·</span> ${intervalLabel} <span style="color: #888">·</span> NSE
-                  <span style="display:inline-block; width:6px; height:6px; border-radius:50%; background-color:${color}; margin-left: 2px;"></span>
-                </div>
-                <div style="font-size: 12px; font-family: monospace; display: flex; gap: 8px; text-shadow: -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff, 0 0 4px #fff;">
-                  <span>O <span style="color: ${color}">${open.toFixed(2)}</span></span>
-                  <span>H <span style="color: ${color}">${high.toFixed(2)}</span></span>
-                  <span>L <span style="color: ${color}">${low.toFixed(2)}</span></span>
-                  <span>C <span style="color: ${color}">${close.toFixed(2)} <span style="margin-left: 4px;">${sign}${change.toFixed(2)} (${sign}${changePct.toFixed(2)}%)</span></span></span>
-                </div>
+      if (currentData) {
+        const { open, high, low, close } = currentData;
+        const color = close >= open ? '#26a69a' : '#ef5350';
+        const change = close - open;
+        const changePct = (change / open) * 100;
+        const sign = change >= 0 ? '+' : '';
+        
+        let volFmt = '0';
+        if (volumeData) {
+          const v = volumeData.value;
+          if (v >= 1000000) volFmt = (v / 1000000).toFixed(2) + 'M';
+          else if (v >= 1000) volFmt = (v / 1000).toFixed(2) + 'k';
+          else volFmt = v.toString();
+        }
+
+        // Generate indicator legend HTML dynamically
+        let indHtml = '';
+        Object.entries(indicatorSeriesRef.current).forEach(([id, obj]) => {
+           let valStr = '';
+           if (obj.type === 'BOLL') {
+             // Bollinger has upper, lower, basis
+             const basisD = param.seriesData.get(obj.series[0]);
+             const upperD = param.seriesData.get(obj.series[1]);
+             const lowerD = param.seriesData.get(obj.series[2]);
+             const b = basisD ? basisD.value.toFixed(2) : 'N/A';
+             const u = upperD ? upperD.value.toFixed(2) : 'N/A';
+             const l = lowerD ? lowerD.value.toFixed(2) : 'N/A';
+             valStr = `basis: ${b} upper: ${u} lower: ${l}`;
+           } else {
+             const d = param.seriesData.get(obj.series);
+             valStr = d ? d.value.toFixed(2) : 'N/A';
+           }
+           indHtml += `<span style="color: ${obj.color}">${obj.type}${obj.period ? obj.period : ''} <strong>${valStr}</strong></span>`;
+        });
+
+        legendRef.current.innerHTML = `
+          <div style="display: flex; flex-direction: column; gap: 4px;">
+            <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap; line-height: 1;">
+              <div style="font-weight: 600; font-size: 13px; display: flex; align-items: center; gap: 4px; text-shadow: -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff, 0 0 4px #fff;">
+                ${symbol || 'SYMBOL'} <span style="color: #888">·</span> ${interval}m <span style="color: #888">·</span> NSE
+                <span style="display:inline-block; width:6px; height:6px; border-radius:50%; background-color:${color}; margin-left: 2px;"></span>
               </div>
-              <div style="font-size: 11px; font-family: monospace; display: flex; gap: 8px; text-shadow: -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff, 0 0 4px #fff;">
-                <span style="color: #333">Vol <span style="color: #26a69a">${volFmt}</span></span>
-                <span style="color: #2196F3">EMA${ema1Length} <strong>${ema1Str}</strong></span>
-                <span style="color: #FF9800">EMA${ema2Length} <strong>${ema2Str}</strong></span>
-                <span style="color: #9C27B0">VWAP <strong>${vwapStr}</strong></span>
+              <div style="font-size: 12px; font-family: monospace; display: flex; gap: 8px; text-shadow: -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff, 0 0 4px #fff;">
+                <span>O <span style="color: ${color}">${open.toFixed(2)}</span></span>
+                <span>H <span style="color: ${color}">${high.toFixed(2)}</span></span>
+                <span>L <span style="color: ${color}">${low.toFixed(2)}</span></span>
+                <span>C <span style="color: ${color}">${close.toFixed(2)} <span style="margin-left: 4px;">${sign}${change.toFixed(2)} (${sign}${changePct.toFixed(2)}%)</span></span></span>
               </div>
             </div>
-          `;
-        }
+            <div style="font-size: 11px; font-family: monospace; display: flex; gap: 8px; flex-wrap: wrap; text-shadow: -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff, 0 0 4px #fff;">
+              <span style="color: #333">Vol <span style="color: #26a69a">${volFmt}</span></span>
+              ${indHtml}
+            </div>
+          </div>
+        `;
       }
     });
 
@@ -170,143 +123,119 @@ export default function CandleChart({ data, symbol, interval, ema1Length = 20, e
       chartRef.current = null;
       seriesRef.current = null;
       volumeSeriesRef.current = null;
-      ema1Ref.current = null;
-      ema2Ref.current = null;
-      vwapRef.current = null;
+      indicatorSeriesRef.current = {};
       loadedRef.current = false;
       lastTimeRef.current = 0;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ema1Length, ema2Length]);
+  }, [symbol, interval]);
 
-  // 2. Update Data
+  // Sync Indicators (add/remove series when indicators array changes)
+  useEffect(() => {
+    if (!chartRef.current) return;
+    const chart = chartRef.current;
+    const currentIds = new Set(indicators.map(i => i.id));
+    
+    // Remove deleted ones
+    Object.keys(indicatorSeriesRef.current).forEach(id => {
+      if (!currentIds.has(id)) {
+        const obj = indicatorSeriesRef.current[id];
+        if (Array.isArray(obj.series)) {
+           obj.series.forEach(s => chart.removeSeries(s));
+        } else {
+           chart.removeSeries(obj.series);
+        }
+        delete indicatorSeriesRef.current[id];
+      }
+    });
+
+    // Add new ones
+    indicators.forEach((ind, index) => {
+      if (!indicatorSeriesRef.current[ind.id]) {
+        const color = getIndicatorColor(ind.type, index);
+        if (ind.type === 'BOLL') {
+           const basis = chart.addSeries(LineSeries, { color, lineWidth: 1, crosshairMarkerVisible: false, priceLineVisible: false, lastValueVisible: true, autoscaleInfoProvider: () => ({ priceRange: null }) });
+           const upper = chart.addSeries(LineSeries, { color, lineWidth: 1, crosshairMarkerVisible: false, priceLineVisible: false, lastValueVisible: true, autoscaleInfoProvider: () => ({ priceRange: null }), lineStyle: 2 });
+           const lower = chart.addSeries(LineSeries, { color, lineWidth: 1, crosshairMarkerVisible: false, priceLineVisible: false, lastValueVisible: true, autoscaleInfoProvider: () => ({ priceRange: null }), lineStyle: 2 });
+           indicatorSeriesRef.current[ind.id] = { type: ind.type, period: ind.period, color, series: [basis, upper, lower] };
+        } else {
+           const series = chart.addSeries(LineSeries, { color, lineWidth: 2, crosshairMarkerVisible: false, priceLineVisible: false, lastValueVisible: true, autoscaleInfoProvider: () => ({ priceRange: null }) });
+           indicatorSeriesRef.current[ind.id] = { type: ind.type, period: ind.period, color, series };
+        }
+      } else {
+         // Update period if changed
+         indicatorSeriesRef.current[ind.id].period = ind.period;
+      }
+    });
+  }, [indicators]);
+
+  // Update Data
   useEffect(() => {
     if (!seriesRef.current || !data || data.length === 0) return;
 
     const chartData = data
       .map((r) => ({
-        // lightweight-charts defaults to UTC display. We add 19800s (5.5 hrs) to hard-shift it to IST.
         time: (new Date(r.ts).getTime() / 1000) + 19800,
-        open: r.open,
-        high: r.high,
-        low: r.low,
-        close: r.close,
+        open: r.open, high: r.high, low: r.low, close: r.close,
         volume: Math.max(0, r.volume || 0),
       }))
       .sort((a, b) => a.time - b.time);
 
-    // Remove strict deduplication. Sometimes ticks have the same second. We'll just map them.
-    // However lightweight charts requires strictly increasing time.
     const uniqueData = [];
     let lastTime = -1;
     for (const d of chartData) {
-      if (d.time > lastTime) {
-        uniqueData.push(d);
-        lastTime = d.time;
-      } else {
-        // Just increment by 1ms if duplicate timestamp to satisfy lightweight-charts
-        d.time = lastTime + 0.001;
-        uniqueData.push(d);
-        lastTime = d.time;
-      }
+      if (d.time > lastTime) { uniqueData.push(d); lastTime = d.time; } 
+      else { d.time = lastTime + 0.001; uniqueData.push(d); lastTime = d.time; }
     }
 
     if (!loadedRef.current) {
       seriesRef.current.setData(uniqueData);
       volumeSeriesRef.current.setData(uniqueData.map(d => ({
-        time: d.time,
-        value: d.volume,
-        color: d.close >= d.open ? 'rgba(38, 166, 154, 0.4)' : 'rgba(239, 83, 80, 0.4)'
+        time: d.time, value: d.volume, color: d.close >= d.open ? 'rgba(38, 166, 154, 0.4)' : 'rgba(239, 83, 80, 0.4)'
       })));
-      
-      const ema1 = calculateEMA(uniqueData, ema1Length);
-      const ema2 = calculateEMA(uniqueData, ema2Length);
-      const vwap = calculateVWAP(uniqueData);
-      
-      if (ema1Ref.current) ema1Ref.current.setData(ema1);
-      if (ema2Ref.current) ema2Ref.current.setData(ema2);
-      if (vwapRef.current) vwapRef.current.setData(vwap);
-
       chartRef.current.timeScale().fitContent();
       loadedRef.current = true;
-      if (uniqueData.length > 0) {
-        lastTimeRef.current = uniqueData[uniqueData.length - 1].time;
-      }
     } else {
       for (const candle of uniqueData) {
         if (candle.time >= lastTimeRef.current) {
           seriesRef.current.update(candle);
           volumeSeriesRef.current.update({
-            time: candle.time,
-            value: candle.volume,
-            color: candle.close >= candle.open ? 'rgba(38, 166, 154, 0.4)' : 'rgba(239, 83, 80, 0.4)'
+            time: candle.time, value: candle.volume, color: candle.close >= candle.open ? 'rgba(38, 166, 154, 0.4)' : 'rgba(239, 83, 80, 0.4)'
           });
         }
       }
-      
-      const ema1 = calculateEMA(uniqueData, ema1Length);
-      const ema2 = calculateEMA(uniqueData, ema2Length);
-      const vwap = calculateVWAP(uniqueData);
-      
-      if (ema1Ref.current) ema1Ref.current.setData(ema1);
-      if (ema2Ref.current) ema2Ref.current.setData(ema2);
-      if (vwapRef.current) vwapRef.current.setData(vwap);
-      
-      if (uniqueData.length > 0) {
-        lastTimeRef.current = uniqueData[uniqueData.length - 1].time;
-      }
     }
-  }, [data, ema1Length, ema2Length]);
+    if (uniqueData.length > 0) lastTimeRef.current = uniqueData[uniqueData.length - 1].time;
+
+    // Calculate and update indicator data
+    Object.values(indicatorSeriesRef.current).forEach(obj => {
+      let indData = [];
+      if (obj.type === 'EMA') indData = calculateEMA(uniqueData, obj.period || 20);
+      else if (obj.type === 'SMA') indData = calculateSMA(uniqueData, obj.period || 20);
+      else if (obj.type === 'VWAP') indData = calculateVWAP(uniqueData);
+      else if (obj.type === 'BOLL') indData = calculateBollingerBands(uniqueData, obj.period || 20, 2);
+
+      if (obj.type === 'BOLL') {
+         obj.series[0].setData(indData.map(d => ({ time: d.time, value: d.basis })));
+         obj.series[1].setData(indData.map(d => ({ time: d.time, value: d.upper })));
+         obj.series[2].setData(indData.map(d => ({ time: d.time, value: d.lower })));
+      } else {
+         obj.series.setData(indData);
+      }
+    });
+
+  }, [data, indicators]);
 
   return (
-    <div className="w-full h-full flex flex-col relative bg-transparent">
-      <style>
-        {`
-          #my-tv-chart a, 
-          #tv-attr-logo {
-            display: none !important;
-            opacity: 0 !important;
-            pointer-events: none !important;
-          }
-        `}
-      </style>
-      <div className="flex-1 relative min-h-0 w-full">
-        <div id="my-tv-chart" ref={chartContainerRef} className="absolute inset-0" />
-        <div 
-          ref={legendRef} 
-          style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            padding: '4px 8px',
-            color: '#333',
-            background: 'transparent',
-            minHeight: '24px',
-            display: 'flex',
-            alignItems: 'center',
-            zIndex: 10,
-            pointerEvents: 'none'
-          }}
-        >
-          <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-            <div style={{ fontWeight: 600, fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px', textShadow: '-1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff, 0 0 4px #fff' }}>
-              {symbol || 'SYMBOL'} <span style={{color: '#888'}}>•</span> {
-                interval === '1' ? '1 min' :
-                interval === '3' ? '3 min' :
-                interval === '5' ? '5 min' :
-                interval === '10' ? '10min' :
-                interval === '15' ? '15 min' :
-                interval === '60' ? '1 hrs' :
-                interval === 'D' ? '1 days' : interval
-              } <span style={{color: '#888'}}>•</span> NSE
-            </div>
-            <div style={{ fontSize: '12px', fontFamily: 'monospace', color: '#888', textShadow: '-1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff, 0 0 4px #fff' }}>
-              Hover over chart for OHLC and Indicators
-            </div>
-          </div>
-        </div>
-      </div>
+    <div style={{ position: "relative", width: "100%", height: "100%" }}>
+      <div 
+        ref={legendRef} 
+        style={{ 
+          position: "absolute", top: 12, left: 12, zIndex: 10, 
+          fontSize: "12px", fontFamily: "sans-serif", pointerEvents: "none", 
+          backgroundColor: "transparent", color: "#333",
+        }} 
+      />
+      <div ref={chartContainerRef} style={{ width: "100%", height: "100%" }} />
     </div>
   );
 }
