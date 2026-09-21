@@ -111,10 +111,19 @@ export default function ChartWidget({
   // Custom Header Right for the Panel
   const panelRight = (
     <div className="flex items-center gap-1.5">
-          <option key={s} value={s}>{s}</option>
-        ))}
+      <select 
+        className="outline-none cursor-pointer font-bold uppercase rounded shadow-sm"
+        style={{ background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text-secondary)", fontSize: "11px", padding: "2px 4px" }}
+        value={localSymbol}
+        onChange={(e) => setLocalSymbol(e.target.value)}
+      >
+        <optgroup label="Indices">
+          {INDICES.map(s => <option key={s} value={s}>{s}</option>)}
+        </optgroup>
+        <optgroup label="Stocks">
+          {["RELIANCE", "HDFCBANK", "ICICIBANK", "INFY", "TCS"].map(s => <option key={s} value={s}>{s}</option>)}
+        </optgroup>
       </select>
-
       <select 
         className="outline-none cursor-pointer font-bold uppercase rounded shadow-sm"
         style={{ background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text-secondary)", fontSize: "11px", padding: "2px 4px" }}
