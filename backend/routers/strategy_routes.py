@@ -14,6 +14,7 @@ router = APIRouter(prefix="/strategies", tags=["strategies"])
 async def kinds(user: User = Depends(get_current_user)):
     return {
         "kinds": [
+            {"id": "pyro_algo",              "name": "PYRO ALGO",                "description": "Combines Stochastic crossover with SuperTrend direction for high-probability trend entries.", "params_hint": "st_period=10, k=14, d=3", "category": "trend"},
             {"id": "ema_crossover",          "name": "EMA Crossover",            "description": "Catches new trends early. Buys when the fast moving average crosses above the slow one.", "params_hint": "fast=9, slow=21", "category": "trend"},
             {"id": "macd_crossover",         "name": "MACD Crossover",           "description": "Momentum strategy. Buys when MACD line crosses above the signal line — a classic confirmation of upward momentum.", "params_hint": "fast=12, slow=26, signal=9", "category": "trend"},
             {"id": "supertrend",             "name": "Supertrend",               "description": "Uses ATR-based dynamic support/resistance. Buys when price closes above the Supertrend line, sells when it crosses below.", "params_hint": "period=10, multiplier=3.0", "category": "trend"},

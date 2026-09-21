@@ -21,9 +21,6 @@ export default function ChartWidget({
   const [chartData, setChartData] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [showTape, setShowTape] = useState(false);
-  const [ema1, setEma1] = useState(20);
-  const [ema2, setEma2] = useState(50);
-  const [showSettings, setShowSettings] = useState(false);
   const { setGlobalSymbol } = useSymbol();
 
   useEffect(() => {
@@ -109,59 +106,11 @@ export default function ChartWidget({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [localSymbol, localInterval, globalDataSource, fromDate, toDate]); 
 
-  const INDICES = ["NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY", "SENSEX", "NIFTYNXT50"];    // Custom Header Right for the Panel
-    const panelRight = (
-      <div className="flex items-center gap-1.5">
-        <div className="relative flex items-center">
-        <button 
-          className="px-2 py-0.5 text-[10px] font-bold uppercase rounded"
-          style={{ background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text-secondary)" }}
-          onClick={() => setShowSettings(!showSettings)}
-        >
-          Indicators
-        </button>
-        
-        {showSettings && (
-          <div className="absolute top-full left-0 mt-1 p-3 rounded shadow-xl z-50 flex flex-col gap-3" style={{ background: "var(--surface)", border: "1px solid var(--border)", minWidth: "160px" }}>
-             <div className="text-[10px] font-bold uppercase text-[var(--text-secondary)] mb-1">Moving Averages</div>
-             <div className="flex items-center justify-between gap-2">
-               <label className="text-[11px] font-bold" style={{color: "#2196F3"}}>EMA 1</label>
-               <input type="number" className="w-16 p-1 text-[11px] outline-none rounded bg-[var(--bg)] border border-[var(--border)] text-[var(--text-primary)] text-center" value={ema1} onChange={e => setEma1(Number(e.target.value)||1)} />
-             </div>
-             <div className="flex items-center justify-between gap-2">
-               <label className="text-[11px] font-bold" style={{color: "#FF9800"}}>EMA 2</label>
-               <input type="number" className="w-16 p-1 text-[11px] outline-none rounded bg-[var(--bg)] border border-[var(--border)] text-[var(--text-primary)] text-center" value={ema2} onChange={e => setEma2(Number(e.target.value)||1)} />
-             </div>
-             <button 
-               className="mt-2 w-full py-1 text-[10px] font-bold uppercase rounded bg-[var(--brand)] text-white"
-               onClick={() => setShowSettings(false)}
-             >
-               Apply
-             </button>
-          </div>
-        )}
-        </div>
+  const INDICES = ["NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY", "SENSEX", "NIFTYNXT50"];
 
-        <select  
-        className="outline-none cursor-pointer font-bold uppercase rounded shadow-sm"
-        style={{ background: "var(--surface)", border: "1px solid var(--border)", color: INDICES.includes(localSymbol) ? "var(--brand)" : "var(--text-secondary)", fontSize: "11px", padding: "2px 4px" }}
-        value={INDICES.includes(localSymbol) ? localSymbol : ""}
-        onChange={(e) => setLocalSymbol(e.target.value)}
-      >
-        <option value="" disabled>Index...</option>
-        {symbols.filter(s => INDICES.includes(s)).map(s => (
-          <option key={s} value={s}>{s}</option>
-        ))}
-      </select>
-
-      <select 
-        className="outline-none cursor-pointer font-bold uppercase rounded shadow-sm"
-        style={{ background: "var(--surface)", border: "1px solid var(--border)", color: !INDICES.includes(localSymbol) ? "var(--brand)" : "var(--text-secondary)", fontSize: "11px", padding: "2px 4px" }}
-        value={!INDICES.includes(localSymbol) ? localSymbol : ""}
-        onChange={(e) => setLocalSymbol(e.target.value)}
-      >
-        <option value="" disabled>Stock...</option>
-        {symbols.filter(s => !INDICES.includes(s)).map(s => (
+  // Custom Header Right for the Panel
+  const panelRight = (
+    <div className="flex items-center gap-1.5">
           <option key={s} value={s}>{s}</option>
         ))}
       </select>
@@ -223,5 +172,3 @@ export default function ChartWidget({
     </Panel>
   );
 }
-
-

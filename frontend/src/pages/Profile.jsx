@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { User, Wallet, ChartLineUp, ShieldCheck } from "@phosphor-icons/react";
 
@@ -46,7 +46,7 @@ export default function Profile() {
   }
 
   if (error) {
-    return error.includes("No execution broker configured") ? <div className="p-6 text-[var(--text-primary)] font-medium text-sm">Welcome! Please connect an execution broker in the Settings tab to start trading.</div> : <div className="p-6 text-[var(--sell)] text-sm">Error: {error}</div>;
+    return <div className="p-6 text-red-500">Error loading profile: {error}</div>;
   }
 
   const toTitleCase = (str) => {
@@ -182,4 +182,3 @@ export default function Profile() {
     </div>
   );
 }
-

@@ -38,10 +38,10 @@ export default function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
 
-          {/* Managed User â€” standalone page (no trader shell) */}
+          {/* Managed User — standalone page (no trader shell) */}
           <Route path="/user-dashboard" element={<UserDashboard />} />
 
-          {/* Trader pages â€” wrapped in full AppShell */}
+          {/* Trader pages — wrapped in full AppShell */}
           <Route path="/" element={wrap(Dashboard)} />
           <Route path="/signals" element={wrap(Signals)} />
           <Route path="/tradingview" element={wrap(TradingView)} />

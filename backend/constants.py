@@ -30,6 +30,7 @@ ALL_SYMBOLS = NIFTY_50 + INDICES
 BROKERS = ["zerodha", "breeze", "angel", "fyers", "upstox", "dhan"]
 
 STRATEGY_KINDS = [
+    "pyro_algo",
     "ema_crossover",
     "macd_crossover",
     "supertrend",

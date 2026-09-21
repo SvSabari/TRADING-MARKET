@@ -128,6 +128,61 @@ def _signals_gamma_scalping(df: pd.DataFrame, params: Dict) -> pd.Series:
 
 # ---- NEW CREATIVE STRATEGIES ----
 
+def _signals_pyro_algo(df: pd.DataFrame, params: Dict) -> pd.Series:
+    """PYRO ALGO: Stochastic crossover combined with SuperTrend."""
+    if len(df) < 50:
+        return pd.Series([0] * len(df), index=df.index)
+    
+    # Supertrend (10, 2.0)
+    period = int(params.get("st_period", 10))
+    multiplier = float(params.get("st_mult", 2.0))
+    tr = pd.concat([
+        df["high"] - df["low"],
+        (df["high"] - df["close"].shift(1)).abs(),
+        (df["low"] - df["close"].shift(1)).abs(),
+    ], axis=1).max(axis=1)
+    atr = tr.rolling(period).mean()
+    hl2 = (df["high"] + df["low"]) / 2
+    upper = hl2 + multiplier * atr
+    lower = hl2 - multiplier * atr
+    direction = pd.Series(1, index=df.index)
+    
+    # Needs a loop to properly calculate supertrend bands
+    for i in range(period, len(df)):
+        prev_upper = upper.iloc[i - 1]
+        prev_lower = lower.iloc[i - 1]
+        upper.iloc[i] = upper.iloc[i] if upper.iloc[i] < prev_upper or df["close"].iloc[i - 1] > prev_upper else prev_upper
+        lower.iloc[i] = lower.iloc[i] if lower.iloc[i] > prev_lower or df["close"].iloc[i - 1] < prev_lower else prev_lower
+        if direction.iloc[i - 1] == -1 and df["close"].iloc[i] > upper.iloc[i - 1]:
+            direction.iloc[i] = 1
+        elif direction.iloc[i - 1] == 1 and df["close"].iloc[i] < lower.iloc[i - 1]:
+            direction.iloc[i] = -1
+        else:
+            direction.iloc[i] = direction.iloc[i - 1]
+            
+    # Stochastic (K=14, D=3, smoothK=3)
+    k_period = int(params.get("k", 14))
+    d_period = int(params.get("d", 3))
+    smooth_k = int(params.get("smooth", 3))
+    
+    lowest_low = df["low"].rolling(k_period).min()
+    highest_high = df["high"].rolling(k_period).max()
+    
+    stoch = 100 * (df["close"] - lowest_low) / (highest_high - lowest_low).replace(0, 1e-6)
+    k = stoch.rolling(smooth_k).mean()
+    d = k.rolling(d_period).mean()
+    
+    cross_up = (k.shift(1) <= d.shift(1)) & (k > d)
+    cross_dn = (k.shift(1) >= d.shift(1)) & (k < d)
+    
+    sig = pd.Series(0, index=df.index)
+    # Long when stoch crosses up AND supertrend is bullish
+    sig[cross_up & (direction == 1)] = 1
+    # Short when stoch crosses down AND supertrend is bearish
+    sig[cross_dn & (direction == -1)] = -1
+    return sig
+
+
 def _signals_supertrend(df: pd.DataFrame, params: Dict) -> pd.Series:
     """Supertrend: Buy when price closes above supertrend line, Sell below."""
     if len(df) < 14:
@@ -340,6 +395,7 @@ def _signals_keltner_channel(df: pd.DataFrame, params: Dict) -> pd.Series:
 
 
 _SIG_MAP = {
+    "pyro_algo": _signals_pyro_algo,
     "ema_crossover": _signals_ema_crossover,
     "vwap_scalping": _signals_vwap_scalping,
     "oi_breakout": _signals_oi_breakout,

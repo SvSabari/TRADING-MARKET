@@ -48,7 +48,7 @@ export default function StatusBar() {
   const sourceLabel = isLive ? (feed.source || "").toUpperCase() : "OFFLINE";
 
   return (
-    <div className="flex-1 flex items-center justify-between gap-6 mono text-[11px]" data-testid="status-bar">
+    <div className="flex-1 flex items-center justify-between gap-6 mono text-[11px] whitespace-nowrap min-w-max" data-testid="status-bar">
       <div className="flex items-center gap-4">
         <span><span className={health?.ticks_running ? "buy" : "sell"}>●</span> TICK·{health?.ticks_running ? "RUNNING" : "STOPPED"}</span>
         <span className="dim">·</span>

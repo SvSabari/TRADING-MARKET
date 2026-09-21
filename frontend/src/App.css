@@ -20,7 +20,8 @@
 .app-ticker  { grid-area: ticker; overflow: hidden; }
 .app-main    { grid-area: main; position: relative; display: flex; flex-direction: column; overflow: hidden; background: var(--bg); }
 .app-right-sidebar { grid-area: right-sidebar; overflow: hidden; }
-.app-status  { grid-area: statusbar; border-top: 1px solid var(--border); background: var(--bg); display:flex; align-items:center; padding: 0 16px; gap: 16px; font-family: "JetBrains Mono", monospace; font-size: 11px; color: var(--text-muted); }
+.app-status  { grid-area: statusbar; border-top: 1px solid var(--border); background: var(--bg); display:flex; align-items:center; padding: 0 16px; gap: 16px; font-family: "JetBrains Mono", monospace; font-size: 11px; color: var(--text-muted); overflow-x: auto; white-space: nowrap; scrollbar-width: none; }
+.app-status::-webkit-scrollbar { display: none; }
 
 .sidebar-link {
     display: flex; align-items: center; gap: 10px;

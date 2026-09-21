@@ -50,7 +50,7 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-4" data-testid="dashboard-page">
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
         <StatTile label="Available Cash" value={fmtRupee(funds?.cashmarginavailable || funds?.cash || funds?.net || 0)} testid="funds-cash" />
         <StatTile label="Used Margin" value={fmtRupee(funds?.spanmargin || funds?.marginUsed || funds?.utilised || 0)} testid="funds-margin" />
         <StatTile label="Total P&L" value={fmtRupee(pnl?.total_pnl || 0)}

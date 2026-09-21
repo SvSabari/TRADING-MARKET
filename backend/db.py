@@ -179,8 +179,7 @@ else:
         _client = AsyncIOMotorClient(MONGO_URL, serverSelectionTimeoutMS=5000)
         db = _client[DB_NAME]
     except PyMongoError as e:
-        safe_url = re.sub(r"//([^:]+):([^@]+)@", "//***:***@", MONGO_URL)
-        print(f"CRITICAL: Failed to connect to MongoDB at {safe_url}: {e}")
+        print(f"CRITICAL: Failed to connect to MongoDB at {MONGO_URL}: {e}")
         # We don't fall back to memory silently. That causes data loss/reappearance bugs!
         raise e
 

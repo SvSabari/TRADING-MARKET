@@ -42,7 +42,12 @@ def _signal_for_strategy(strat: Strategy) -> tuple[str | None, str | None, float
     side = None
     # Each kind has a different trigger heuristic
     # Relaxed thresholds so they fire frequently during testing
-    if kind == "ema_crossover":
+    if kind == "pyro_algo":
+        if diff > 0.00015 or random.random() < 0.1:
+            side = "BUY"
+        elif diff < -0.00015 or random.random() < 0.1:
+            side = "SELL"
+    elif kind == "ema_crossover":
         if diff > 0.0002 or random.random() < 0.1:
             side = "BUY"
         elif diff < -0.0002 or random.random() < 0.1:
