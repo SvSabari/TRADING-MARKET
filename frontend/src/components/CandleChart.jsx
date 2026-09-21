@@ -2,15 +2,15 @@ import { useEffect, useRef } from "react";
 import { createChart, ColorType, CandlestickSeries, HistogramSeries, LineSeries } from "lightweight-charts";
 import { calculateEMA, calculateVWAP } from "./indicators";
 
-export default function CandleChart({ data, symbol, interval }) {
+export default function CandleChart({ data, symbol, interval, ema1Length = 20, ema2Length = 50 }) {
   const chartContainerRef = useRef(null);
   const legendRef = useRef(null);
   const chartRef = useRef(null);
   const seriesRef = useRef(null);
   const volumeSeriesRef = useRef(null);
   
-  const ema20Ref = useRef(null);
-  const ema50Ref = useRef(null);
+  const ema1Ref = useRef(null);
+  const ema2Ref = useRef(null);
   const vwapRef = useRef(null);
 
   const loadedRef = useRef(false);
@@ -54,7 +54,7 @@ export default function CandleChart({ data, symbol, interval }) {
     });
     seriesRef.current = candlestickSeries;
 
-    const ema20Series = chart.addSeries(LineSeries, {
+    const ema1Series = chart.addSeries(LineSeries, {
       color: '#2196F3',
       lineWidth: 2,
       crosshairMarkerVisible: false,
@@ -62,9 +62,9 @@ export default function CandleChart({ data, symbol, interval }) {
       lastValueVisible: true,
       autoscaleInfoProvider: () => ({ priceRange: null }),
     });
-    ema20Ref.current = ema20Series;
+    ema1Ref.current = ema1Series;
 
-    const ema50Series = chart.addSeries(LineSeries, {
+    const ema2Series = chart.addSeries(LineSeries, {
       color: '#FF9800',
       lineWidth: 2,
       crosshairMarkerVisible: false,
@@ -72,7 +72,7 @@ export default function CandleChart({ data, symbol, interval }) {
       lastValueVisible: true,
       autoscaleInfoProvider: () => ({ priceRange: null }),
     });
-    ema50Ref.current = ema50Series;
+    ema2Ref.current = ema2Series;
 
     const vwapSeries = chart.addSeries(LineSeries, {
       color: '#9C27B0',
@@ -106,8 +106,8 @@ export default function CandleChart({ data, symbol, interval }) {
       } else {
         const currentData = param.seriesData.get(candlestickSeries);
         const volumeData = param.seriesData.get(volumeSeries);
-        const ema20Data = param.seriesData.get(ema20Series);
-        const ema50Data = param.seriesData.get(ema50Series);
+        const ema1Data = param.seriesData.get(ema1Series);
+        const ema2Data = param.seriesData.get(ema2Series);
         const vwapData = param.seriesData.get(vwapSeries);
 
         if (currentData) {
@@ -127,8 +127,8 @@ export default function CandleChart({ data, symbol, interval }) {
             interval === '60' ? '1 hrs' :
             interval === 'D' ? '1 days' : interval;
             
-          const ema20Str = ema20Data ? ema20Data.value.toFixed(2) : 'N/A';
-          const ema50Str = ema50Data ? ema50Data.value.toFixed(2) : 'N/A';
+          const ema1Str = ema1Data ? ema1Data.value.toFixed(2) : 'N/A';
+          const ema2Str = ema2Data ? ema2Data.value.toFixed(2) : 'N/A';
           const vwapStr = vwapData ? vwapData.value.toFixed(2) : 'N/A';
           
           let volFmt = '0';
@@ -143,7 +143,7 @@ export default function CandleChart({ data, symbol, interval }) {
             <div style="display: flex; flex-direction: column; gap: 4px;">
               <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap; line-height: 1;">
                 <div style="font-weight: 600; font-size: 13px; display: flex; align-items: center; gap: 4px; text-shadow: -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff, 0 0 4px #fff;">
-                  ${symbol || 'SYMBOL'} <span style="color: #888">•</span> ${intervalLabel} <span style="color: #888">•</span> NSE
+                  ${symbol || 'SYMBOL'} <span style="color: #888">·</span> ${intervalLabel} <span style="color: #888">·</span> NSE
                   <span style="display:inline-block; width:6px; height:6px; border-radius:50%; background-color:${color}; margin-left: 2px;"></span>
                 </div>
                 <div style="font-size: 12px; font-family: monospace; display: flex; gap: 8px; text-shadow: -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff, 0 0 4px #fff;">
@@ -155,8 +155,8 @@ export default function CandleChart({ data, symbol, interval }) {
               </div>
               <div style="font-size: 11px; font-family: monospace; display: flex; gap: 8px; text-shadow: -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff, 0 0 4px #fff;">
                 <span style="color: #333">Vol <span style="color: #26a69a">${volFmt}</span></span>
-                <span style="color: #2196F3">EMA20 <strong>${ema20Str}</strong></span>
-                <span style="color: #FF9800">EMA50 <strong>${ema50Str}</strong></span>
+                <span style="color: #2196F3">EMA${ema1Length} <strong>${ema1Str}</strong></span>
+                <span style="color: #FF9800">EMA${ema2Length} <strong>${ema2Str}</strong></span>
                 <span style="color: #9C27B0">VWAP <strong>${vwapStr}</strong></span>
               </div>
             </div>
@@ -170,14 +170,14 @@ export default function CandleChart({ data, symbol, interval }) {
       chartRef.current = null;
       seriesRef.current = null;
       volumeSeriesRef.current = null;
-      ema20Ref.current = null;
-      ema50Ref.current = null;
+      ema1Ref.current = null;
+      ema2Ref.current = null;
       vwapRef.current = null;
       loadedRef.current = false;
       lastTimeRef.current = 0;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [ema1Length, ema2Length]);
 
   // 2. Update Data
   useEffect(() => {
@@ -193,55 +193,70 @@ export default function CandleChart({ data, symbol, interval }) {
         close: r.close,
         volume: Math.max(0, r.volume || 0),
       }))
-      .filter(r => r.open > 0 && r.high > 0 && r.low > 0 && r.close > 0)
-      .sort((a, b) => a.time - b.time)
-      .filter((r, idx, arr) => idx === 0 || r.time !== arr[idx - 1].time);
+      .sort((a, b) => a.time - b.time);
 
-    const ema20Data = calculateEMA(chartData, 20);
-    const ema50Data = calculateEMA(chartData, 50);
-    const vwapData = calculateVWAP(chartData);
+    // Remove strict deduplication. Sometimes ticks have the same second. We'll just map them.
+    // However lightweight charts requires strictly increasing time.
+    const uniqueData = [];
+    let lastTime = -1;
+    for (const d of chartData) {
+      if (d.time > lastTime) {
+        uniqueData.push(d);
+        lastTime = d.time;
+      } else {
+        // Just increment by 1ms if duplicate timestamp to satisfy lightweight-charts
+        d.time = lastTime + 0.001;
+        uniqueData.push(d);
+        lastTime = d.time;
+      }
+    }
 
     if (!loadedRef.current) {
-      // First load: set all data and fit content
-      seriesRef.current.setData(chartData);
+      seriesRef.current.setData(uniqueData);
+      volumeSeriesRef.current.setData(uniqueData.map(d => ({
+        time: d.time,
+        value: d.volume,
+        color: d.close >= d.open ? 'rgba(38, 166, 154, 0.4)' : 'rgba(239, 83, 80, 0.4)'
+      })));
       
-      const volumeData = chartData.map(c => ({
-        time: c.time,
-        value: c.volume,
-        color: c.close >= c.open ? 'rgba(38, 166, 154, 0.5)' : 'rgba(239, 83, 80, 0.5)'
-      }));
-      volumeSeriesRef.current.setData(volumeData);
+      const ema1 = calculateEMA(uniqueData, ema1Length);
+      const ema2 = calculateEMA(uniqueData, ema2Length);
+      const vwap = calculateVWAP(uniqueData);
       
-      if (ema20Ref.current) ema20Ref.current.setData(ema20Data);
-      if (ema50Ref.current) ema50Ref.current.setData(ema50Data);
-      if (vwapRef.current) vwapRef.current.setData(vwapData);
-      
+      if (ema1Ref.current) ema1Ref.current.setData(ema1);
+      if (ema2Ref.current) ema2Ref.current.setData(ema2);
+      if (vwapRef.current) vwapRef.current.setData(vwap);
+
       chartRef.current.timeScale().fitContent();
       loadedRef.current = true;
-      if (chartData.length > 0) {
-        lastTimeRef.current = chartData[chartData.length - 1].time;
+      if (uniqueData.length > 0) {
+        lastTimeRef.current = uniqueData[uniqueData.length - 1].time;
       }
     } else {
-      // Subsequent updates: only update/append the latest candles
-      // lightweight-charts requires new updates to have time >= the last existing time.
-      chartData.forEach((candle, idx) => {
+      for (const candle of uniqueData) {
         if (candle.time >= lastTimeRef.current) {
           seriesRef.current.update(candle);
           volumeSeriesRef.current.update({
             time: candle.time,
             value: candle.volume,
-            color: candle.close >= candle.open ? 'rgba(38, 166, 154, 0.5)' : 'rgba(239, 83, 80, 0.5)'
+            color: candle.close >= candle.open ? 'rgba(38, 166, 154, 0.4)' : 'rgba(239, 83, 80, 0.4)'
           });
-          
-          if (ema20Ref.current && ema20Data[idx]) ema20Ref.current.update(ema20Data[idx]);
-          if (ema50Ref.current && ema50Data[idx]) ema50Ref.current.update(ema50Data[idx]);
-          if (vwapRef.current && vwapData[idx]) vwapRef.current.update(vwapData[idx]);
-          
-          lastTimeRef.current = candle.time;
         }
-      });
+      }
+      
+      const ema1 = calculateEMA(uniqueData, ema1Length);
+      const ema2 = calculateEMA(uniqueData, ema2Length);
+      const vwap = calculateVWAP(uniqueData);
+      
+      if (ema1Ref.current) ema1Ref.current.setData(ema1);
+      if (ema2Ref.current) ema2Ref.current.setData(ema2);
+      if (vwapRef.current) vwapRef.current.setData(vwap);
+      
+      if (uniqueData.length > 0) {
+        lastTimeRef.current = uniqueData[uniqueData.length - 1].time;
+      }
     }
-  }, [data]);
+  }, [data, ema1Length, ema2Length]);
 
   return (
     <div className="w-full h-full flex flex-col relative bg-transparent">

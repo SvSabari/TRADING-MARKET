@@ -21,6 +21,8 @@ export default function ChartWidget({
   const [chartData, setChartData] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [showTape, setShowTape] = useState(false);
+  const [ema1, setEma1] = useState(20);
+  const [ema2, setEma2] = useState(50);
   const { setGlobalSymbol } = useSymbol();
 
   useEffect(() => {
@@ -90,7 +92,10 @@ export default function ChartWidget({
         if (isInitial) setIsLoading(true);
         try {
           const { data } = await api.get(`/parquet/preview?path=${encodeURIComponent(localSymbol)}&limit=1000&interval=${localInterval}`);
-          setChartData(data.rows || []);
+          const rows = data.rows || [];
+          const todayStr = new Date().toISOString().split("T")[0];
+          const todayRows = rows.filter(r => r.ts && r.ts.startsWith(todayStr));
+          setChartData(todayRows);
         } catch (e) {
           console.error("Failed to load chart data", e);
         } finally {
@@ -139,6 +144,15 @@ export default function ChartWidget({
         <option value="D">1D</option>
       </select>
 
+      <div className="flex items-center gap-1 bg-[var(--surface)] border border-[var(--border)] rounded px-1" style={{ fontSize: "11px" }}>
+        <span className="text-[var(--text-secondary)] font-semibold">EMA1</span>
+        <input type="number" value={ema1} onChange={e => setEma1(parseInt(e.target.value) || 20)} className="w-8 outline-none bg-transparent text-center font-bold" />
+      </div>
+      <div className="flex items-center gap-1 bg-[var(--surface)] border border-[var(--border)] rounded px-1" style={{ fontSize: "11px" }}>
+        <span className="text-[var(--text-secondary)] font-semibold">EMA2</span>
+        <input type="number" value={ema2} onChange={e => setEma2(parseInt(e.target.value) || 50)} className="w-8 outline-none bg-transparent text-center font-bold" />
+      </div>
+
       <button 
         onClick={() => setShowTape(!showTape)}
         className="ml-1 p-1 rounded hover:bg-[var(--surface-hover)] transition-colors flex items-center justify-center"
@@ -166,7 +180,7 @@ export default function ChartWidget({
         ) : chartData.length > 0 ? (
           <>
             <div className="flex-1 min-w-0 h-full">
-              <CandleChart key={`${localSymbol}-${globalDataSource}-${localInterval}`} data={chartData} symbol={localSymbol} interval={localInterval} />
+              <CandleChart key={`${localSymbol}-${globalDataSource}-${localInterval}-${ema1}-${ema2}`} data={chartData} symbol={localSymbol} interval={localInterval} ema1Length={ema1} ema2Length={ema2} />
             </div>
             {showTape && (
               <TimeAndSales symbol={localSymbol} />
