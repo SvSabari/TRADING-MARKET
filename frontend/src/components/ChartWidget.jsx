@@ -94,11 +94,8 @@ export default function ChartWidget({
       const loadData = async (isInitial = false) => {
         if (isInitial) setIsLoading(true);
         try {
-          const { data } = await api.get(`/parquet/preview?path=${encodeURIComponent(localSymbol)}&limit=1000&interval=${localInterval}`);
-          const rows = data.rows || [];
-          const todayStr = new Date().toISOString().split("T")[0];
-          const todayRows = rows.filter(r => r.ts && r.ts.startsWith(todayStr));
-          setChartData(todayRows);
+          const { data } = await api.get(`/parquet/preview?path=${encodeURIComponent(localSymbol)}&limit=500&interval=${localInterval}&today_only=true`);
+          setChartData(data.rows || []);
         } catch (e) {
           console.error("Failed to load chart data", e);
         } finally {

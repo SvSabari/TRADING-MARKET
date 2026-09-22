@@ -57,12 +57,49 @@ async def list_files():
     return {"files": out}
 
 
+@router.get("/info")
+async def get_data_info(symbol: str):
+    symbol = symbol.upper()
+    count = await db.market_candles.count_documents({"symbol": symbol})
+    if count == 0:
+        return {"days": 0, "candles": 0}
+    
+    first_doc = await db.market_candles.find_one({"symbol": symbol}, sort=[("ts", 1)])
+    last_doc = await db.market_candles.find_one({"symbol": symbol}, sort=[("ts", -1)])
+    
+    start = first_doc["ts"]
+    end = last_doc["ts"]
+    
+    # Ensure they are timezone aware
+    if start.tzinfo is None: start = start.replace(tzinfo=timezone.utc)
+    if end.tzinfo is None: end = end.replace(tzinfo=timezone.utc)
+        
+    diff = end - start
+    days = max(1, round(diff.total_seconds() / 86400, 1))
+    
+    return {
+        "days": days,
+        "candles": count,
+        "start": start.isoformat(),
+        "end": end.isoformat()
+    }
+
+
 @router.get("/preview")
-async def get_data_preview(path: str, interval: str = "1", limit: int = 1000):
+async def get_data_preview(path: str, interval: str = "1", limit: int = 1000, today_only: bool = False):
     # 'path' from frontend is now just the symbol
     symbol = path.upper()
-    # Fetch more ticks so we can form enough grouped candles
-    cursor = db.market_candles.find({"symbol": symbol}).sort("ts", -1).limit(limit * 60)
+    query = {"symbol": symbol}
+    if today_only:
+        today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+        query["ts"] = {"$gte": today}
+    
+    # Calculate how many 5s ticks we need to form 'limit' candles of 'interval' size
+    # 1 min = 12 ticks, 3 min = 36 ticks, 5 min = 60 ticks
+    ticks_per_candle = int(interval) * 12 if interval.isdigit() else 12
+    max_ticks = min(limit * ticks_per_candle, 25000) # Cap at ~1 day of ticks to prevent memory bloat
+    
+    cursor = db.market_candles.find(query).sort("ts", -1).limit(max_ticks)
     docs = []
     async for doc in cursor:
         doc.pop("_id", None)

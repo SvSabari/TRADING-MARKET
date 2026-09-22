@@ -77,6 +77,7 @@ export default function Backtest() {
   const [sectorBusy, setSectorBusy] = useState(false);
   const [activeTab, setActiveTab] = useState("curve"); // curve | trades | sector
   const [lotSizes, setLotSizes] = useState({});
+  const [dataInfo, setDataInfo] = useState(null);
 
   useEffect(() => {
     api.get("/strategies/kinds").then(({ data }) => setKinds(data.kinds));
@@ -89,6 +90,11 @@ export default function Backtest() {
     });
     api.get("/backtest/history").then(({ data }) => setHistory(data.runs));
   }, []);
+
+  useEffect(() => {
+    if (!form.symbol) return;
+    api.get(`/parquet/info?symbol=${form.symbol}`).then(({ data }) => setDataInfo(data)).catch(() => setDataInfo(null));
+  }, [form.symbol]);
 
   const run = async () => {
     setBusy(true);
@@ -231,7 +237,13 @@ export default function Backtest() {
               {kinds.map(k => <option key={k.id} value={k.id}>{k.name}</option>)}
             </select>
           </div>
-          <div style={{ display: "flex", alignItems: "flex-end", gap: 12 }}>
+          </div>
+          {dataInfo && (
+            <div style={{ marginTop: 12, fontSize: 11, color: "var(--text-secondary)", fontFamily: "JetBrains Mono" }}>
+              <span style={{ color: "var(--primary)" }}>{dataInfo.days} days</span> of tick data available in DB for {form.symbol}
+            </div>
+          )}
+          <div style={{ display: "flex", alignItems: "flex-end", gap: 12, marginTop: 12 }}>
             <button className="btn btn-primary" disabled={busy} onClick={run} data-testid="bt-run-btn"
               style={{ whiteSpace: "nowrap", gap: 8, display: "flex", alignItems: "center" }}>
               {busy ? <ArrowsClockwise size={14} weight="bold" className="animate-spin" /> : <FlowArrow size={14} weight="bold" />}
