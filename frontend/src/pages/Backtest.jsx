@@ -76,10 +76,17 @@ export default function Backtest() {
   const [sectorResult, setSectorResult] = useState(null);
   const [sectorBusy, setSectorBusy] = useState(false);
   const [activeTab, setActiveTab] = useState("curve"); // curve | trades | sector
+  const [lotSizes, setLotSizes] = useState({});
 
   useEffect(() => {
     api.get("/strategies/kinds").then(({ data }) => setKinds(data.kinds));
-    api.get("/market/symbols").then(({ data }) => setSymbols(data.symbols));
+    api.get("/market/symbols").then(({ data }) => {
+      setSymbols(data.symbols);
+      if (data.lot_sizes) {
+        setLotSizes(data.lot_sizes);
+        setForm(f => ({ ...f, qty: data.lot_sizes[f.symbol] || "" }));
+      }
+    });
     api.get("/backtest/history").then(({ data }) => setHistory(data.runs));
   }, []);
 
@@ -165,7 +172,7 @@ export default function Backtest() {
           <div>
             <label style={{ display: "block", fontSize: 10, fontFamily: "JetBrains Mono", color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>Symbol</label>
             <select className="terminal" value={form.symbol} data-testid="bt-symbol"
-              onChange={e => setForm({ ...form, symbol: e.target.value })}>
+              onChange={e => setForm({ ...form, symbol: e.target.value, qty: lotSizes[e.target.value] || form.qty })}>
               {symbols.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
           </div>

@@ -214,6 +214,13 @@ class BacktestRequest(BaseModel):
     params: Dict[str, Any] = Field(default_factory=dict)
 
 
+class SymbolMaster(BaseDocument):
+    symbol: str
+    lot_size: int
+    exchange: str = "NSE"
+
+
+
 # ---------- Market Data (Database equivalent of parquet) ----------
 class MarketCandle(BaseDocument):
     symbol: str
