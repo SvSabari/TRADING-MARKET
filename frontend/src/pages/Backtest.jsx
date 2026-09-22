@@ -86,7 +86,10 @@ export default function Backtest() {
   const run = async () => {
     setBusy(true);
     try {
-      const { data } = await api.post("/backtest/run", { ...form, params: {} });
+      const { data } = await api.post("/backtest/run", { 
+        ...form, 
+        params: form.qty ? { qty: form.qty } : {} 
+      });
       setResult(data);
       setActiveTab("curve");
       const { data: h } = await api.get("/backtest/history");
@@ -99,7 +102,10 @@ export default function Backtest() {
   const runSectorAnalysis = async () => {
     setSectorBusy(true);
     try {
-      const { data } = await api.post("/backtest/sector-accuracy", { ...form, params: {} });
+      const { data } = await api.post("/backtest/sector-accuracy", { 
+        ...form, 
+        params: form.qty ? { qty: form.qty } : {} 
+      });
       setSectorResult(data);
       setActiveTab("sector");
       toast.success("Sector analysis complete!");
@@ -168,6 +174,11 @@ export default function Backtest() {
             <input className="terminal" type="number" min="1" max="365" value={form.period_days}
               data-testid="bt-period"
               onChange={e => setForm({ ...form, period_days: parseInt(e.target.value) })} />
+          </div>
+          <div>
+            <label style={{ display: "block", fontSize: 10, fontFamily: "JetBrains Mono", color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>Lot Size (Qty)</label>
+            <input className="terminal" type="number" min="1" placeholder="Auto" value={form.qty || ""}
+              onChange={e => setForm({ ...form, qty: e.target.value })} />
           </div>
           <div>
             <label style={{ display: "block", fontSize: 10, fontFamily: "JetBrains Mono", color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>Strategy</label>

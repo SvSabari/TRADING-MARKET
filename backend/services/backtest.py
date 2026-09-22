@@ -168,7 +168,15 @@ def _signals_pyro_algo(df: pd.DataFrame, params: Dict) -> pd.Series:
     lowest_low = df["low"].rolling(k_period).min()
     highest_high = df["high"].rolling(k_period).max()
     
-    stoch = 100 * (df["close"] - lowest_low) / (highest_high - lowest_low).replace(0, 1e-6)
+    # Global Stochastic Calculations (Scaled)
+    limit_highest = df["high"].rolling(20).max()
+    limit_lowest = df["low"].rolling(20).min()
+    
+    stoch_range = (highest_high - lowest_low).replace(0, 1e-6)
+    
+    # Scale the close price position inside the 14-period range into the 20-period range
+    stoch = limit_lowest + (limit_highest - limit_lowest) * (df["close"] - lowest_low) / stoch_range
+    
     k = stoch.rolling(smooth_k).mean()
     d = k.rolling(d_period).mean()
     
@@ -444,11 +452,19 @@ def _close_position(state: SimState, fill: float, ts: str, final: bool = False) 
     state.position = 0
 
 
-def _open_position(state: SimState, side: int, fill: float) -> None:
-    """Open a new long/short position sized at ~95% of equity."""
+def _open_position(state: SimState, side: int, fill: float, params: Dict = None) -> None:
+    """Open a new long/short position sized at ~95% of equity, or fixed lot size."""
     if state.equity <= 0:
         return
-    state.qty = max(1, int(state.equity * 0.95 / fill))
+        
+    params = params or {}
+    fixed_qty = params.get("qty")
+    
+    if fixed_qty and int(fixed_qty) > 0:
+        state.qty = int(fixed_qty)
+    else:
+        state.qty = max(1, int(state.equity * 0.95 / fill))
+        
     state.position = side
     state.entry_price = fill
 
@@ -501,7 +517,7 @@ def _simulate(df: pd.DataFrame, signals: pd.Series, params: Dict = None) -> Dict
         if state.position != 0:
             _close_position(state, fill, ts_vals[i + 1])
         if sig in (1, -1):
-            _open_position(state, sig, fill)
+            _open_position(state, sig, fill, params)
 
     # final close on last bar
     last_close = float(close_vals[-1])
