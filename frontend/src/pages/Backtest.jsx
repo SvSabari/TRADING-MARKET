@@ -217,7 +217,9 @@ export default function Backtest() {
               <option value="1min">1 Min</option>
               <option value="3min">3 Min</option>
               <option value="5min">5 Min</option>
+              <option value="10min">10 Min</option>
               <option value="15min">15 Min</option>
+              <option value="30min">30 Min</option>
               <option value="60min">1 Hour</option>
               <option value="D">1 Day</option>
             </select>
