@@ -69,7 +69,7 @@ const CustomTooltip = ({ active, payload }) => {
 export default function Backtest() {
   const [kinds, setKinds]     = useState([]);
   const [symbols, setSymbols] = useState(["RELIANCE"]);
-  const [form, setForm]       = useState({ strategy_kind: "ema_crossover", symbol: "RELIANCE", period_days: 30, target_pct: 2, stop_loss_pct: 1 });
+  const [form, setForm]       = useState({ strategy_kind: "ema_crossover", symbol: "RELIANCE", period_days: 30, target_pct: 2, stop_loss_pct: 1, timeframe: "1min" });
   const [result, setResult]   = useState(null);
   const [history, setHistory] = useState([]);
   const [busy, setBusy]       = useState(false);
@@ -95,7 +95,8 @@ export default function Backtest() {
     try {
       const extraParams = {
         take_profit_pct: parseFloat(form.target_pct) / 100.0,
-        stop_loss_pct: parseFloat(form.stop_loss_pct) / 100.0
+        stop_loss_pct: parseFloat(form.stop_loss_pct) / 100.0,
+        resample: form.timeframe
       };
       if (form.qty) extraParams.qty = form.qty;
       
@@ -117,7 +118,8 @@ export default function Backtest() {
     try {
       const extraParams = {
         take_profit_pct: parseFloat(form.target_pct) / 100.0,
-        stop_loss_pct: parseFloat(form.stop_loss_pct) / 100.0
+        stop_loss_pct: parseFloat(form.stop_loss_pct) / 100.0,
+        resample: form.timeframe
       };
       if (form.qty) extraParams.qty = form.qty;
 
@@ -208,6 +210,17 @@ export default function Backtest() {
             <label style={{ display: "block", fontSize: 10, fontFamily: "JetBrains Mono", color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>Stop loss %</label>
             <input className="terminal" type="number" step="0.1" min="0.1" value={form.stop_loss_pct}
               onChange={e => setForm({ ...form, stop_loss_pct: e.target.value })} />
+          </div>
+          <div>
+            <label style={{ display: "block", fontSize: 10, fontFamily: "JetBrains Mono", color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>Timeframe</label>
+            <select className="terminal" value={form.timeframe} onChange={e => setForm({ ...form, timeframe: e.target.value })}>
+              <option value="1min">1 Min</option>
+              <option value="3min">3 Min</option>
+              <option value="5min">5 Min</option>
+              <option value="15min">15 Min</option>
+              <option value="60min">1 Hour</option>
+              <option value="D">1 Day</option>
+            </select>
           </div>
           <div>
             <label style={{ display: "block", fontSize: 10, fontFamily: "JetBrains Mono", color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>Strategy</label>
