@@ -237,31 +237,30 @@ export default function Backtest() {
               {kinds.map(k => <option key={k.id} value={k.id}>{k.name}</option>)}
             </select>
           </div>
+        </div>
+        {dataInfo && (
+          <div style={{ padding: "0 16px 8px", fontSize: 11, color: "var(--text-secondary)", fontFamily: "JetBrains Mono" }}>
+            <span style={{ color: "var(--primary)" }}>{dataInfo.days} days</span> of tick data available in DB for {form.symbol}
           </div>
-          {dataInfo && (
-            <div style={{ marginTop: 12, fontSize: 11, color: "var(--text-secondary)", fontFamily: "JetBrains Mono" }}>
-              <span style={{ color: "var(--primary)" }}>{dataInfo.days} days</span> of tick data available in DB for {form.symbol}
-            </div>
+        )}
+        <div style={{ padding: "0 16px 16px", display: "flex", alignItems: "center", gap: 12 }}>
+          <button className="btn btn-primary" disabled={busy} onClick={run} data-testid="bt-run-btn"
+            style={{ whiteSpace: "nowrap", gap: 8, display: "flex", alignItems: "center" }}>
+            {busy ? <ArrowsClockwise size={14} weight="bold" className="animate-spin" /> : <FlowArrow size={14} weight="bold" />}
+            {busy ? "Running…" : "Run Backtest"}
+          </button>
+          <button className="btn" disabled={sectorBusy} onClick={runSectorAnalysis} data-testid="bt-sector-btn"
+            style={{ whiteSpace: "nowrap", gap: 8, display: "flex", alignItems: "center", background: "var(--surface)", border: "1px solid var(--border)" }}>
+            {sectorBusy ? <ArrowsClockwise size={14} weight="bold" className="animate-spin" /> : <ChartBar size={14} weight="bold" />}
+            {sectorBusy ? "Analyzing…" : "Sector Matrix"}
+          </button>
+          {(result || sectorResult) && (
+            <button className="btn" onClick={() => { setResult(null); setSectorResult(null); }} title="Clear results and go back to normal"
+              style={{ whiteSpace: "nowrap", gap: 8, display: "flex", alignItems: "center", background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text-secondary)" }}>
+              <ArrowsClockwise size={14} weight="bold" />
+              Reset
+            </button>
           )}
-          <div style={{ display: "flex", alignItems: "flex-end", gap: 12, marginTop: 12 }}>
-            <button className="btn btn-primary" disabled={busy} onClick={run} data-testid="bt-run-btn"
-              style={{ whiteSpace: "nowrap", gap: 8, display: "flex", alignItems: "center" }}>
-              {busy ? <ArrowsClockwise size={14} weight="bold" className="animate-spin" /> : <FlowArrow size={14} weight="bold" />}
-              {busy ? "Running…" : "Run Backtest"}
-            </button>
-            <button className="btn" disabled={sectorBusy} onClick={runSectorAnalysis} data-testid="bt-sector-btn"
-              style={{ whiteSpace: "nowrap", gap: 8, display: "flex", alignItems: "center", background: "var(--surface)", border: "1px solid var(--border)" }}>
-              {sectorBusy ? <ArrowsClockwise size={14} weight="bold" className="animate-spin" /> : <ChartBar size={14} weight="bold" />}
-              {sectorBusy ? "Analyzing…" : "Sector Matrix"}
-            </button>
-            {(result || sectorResult) && (
-              <button className="btn" onClick={() => { setResult(null); setSectorResult(null); }} title="Clear results and go back to normal"
-                style={{ whiteSpace: "nowrap", gap: 8, display: "flex", alignItems: "center", background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text-secondary)" }}>
-                <ArrowsClockwise size={14} weight="bold" />
-                Reset
-              </button>
-            )}
-          </div>
         </div>
       </Panel>
 
