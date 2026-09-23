@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+﻿import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { fmtNum, fmtPct, fmtRupee } from "@/lib/format";
@@ -38,7 +38,7 @@ function StrategyCard({ k, selected, onClick }) {
       </div>
       <div style={{ fontSize: 11, color: "var(--text-secondary)", lineHeight: 1.5, marginBottom: 10 }}>{k.description}</div>
       {k.params_hint && k.params_hint !== "None" && (
-        <div style={{ fontSize: 10, fontFamily: "JetBrains Mono", color: "var(--text-secondary)", background: "var(--bg)", borderRadius: 4, padding: "4px 8px" }}>⚙ {k.params_hint}</div>
+        <div style={{ fontSize: 10, fontFamily: "JetBrains Mono", color: "var(--text-secondary)", background: "var(--bg)", borderRadius: 4, padding: "4px 8px" }}>âš™ {k.params_hint}</div>
       )}
     </div>
   );
@@ -247,12 +247,12 @@ export default function Backtest() {
           <button className="btn btn-primary" disabled={busy} onClick={run} data-testid="bt-run-btn"
             style={{ whiteSpace: "nowrap", gap: 8, display: "flex", alignItems: "center" }}>
             {busy ? <ArrowsClockwise size={14} weight="bold" className="animate-spin" /> : <FlowArrow size={14} weight="bold" />}
-            {busy ? "Running…" : "Run Backtest"}
+            {busy ? "Runningâ€¦" : "Run Backtest"}
           </button>
           <button className="btn" disabled={sectorBusy} onClick={runSectorAnalysis} data-testid="bt-sector-btn"
             style={{ whiteSpace: "nowrap", gap: 8, display: "flex", alignItems: "center", background: "var(--surface)", border: "1px solid var(--border)" }}>
             {sectorBusy ? <ArrowsClockwise size={14} weight="bold" className="animate-spin" /> : <ChartBar size={14} weight="bold" />}
-            {sectorBusy ? "Analyzing…" : "Sector Matrix"}
+            {sectorBusy ? "Analyzingâ€¦" : "Sector Matrix"}
           </button>
           {(result || sectorResult) && (
             <button className="btn" onClick={() => { setResult(null); setSectorResult(null); }} title="Clear results and go back to normal"
@@ -270,7 +270,7 @@ export default function Backtest() {
           {/* Metrics Strip */}
           {result && (
             <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
-              <MetricBadge label={`Total Return · ${result.data_source}`} value={fmtPct(m.total_return_pct)} positive={m.total_return_pct >= 0} />
+              <MetricBadge label={`Total Return Â· ${result.data_source}`} value={fmtPct(m.total_return_pct)} positive={m.total_return_pct >= 0} />
               <MetricBadge label="Win Rate" value={fmtPct(m.win_rate_pct)} positive={m.win_rate_pct >= 50} />
               <MetricBadge label="Max Drawdown" value={fmtPct(-m.max_drawdown_pct)} positive={false} />
               <MetricBadge label="Sharpe Ratio" value={fmtNum(m.sharpe)} positive={m.sharpe >= 1} />
@@ -308,7 +308,7 @@ export default function Backtest() {
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                     <XAxis dataKey="t" tick={{ fill: "#555", fontSize: 9, fontFamily: "JetBrains Mono" }} stroke="#333" />
                     <YAxis domain={["auto", "auto"]} tick={{ fill: "#555", fontSize: 9, fontFamily: "JetBrains Mono" }} stroke="#333" />
-                    <ReferenceLine y={100000} stroke="#444" strokeDasharray="4 4" label={{ value: "Start ₹1L", fill: "#666", fontSize: 9 }} />
+                    <ReferenceLine y={100000} stroke="#444" strokeDasharray="4 4" label={{ value: "Start â‚¹1L", fill: "#666", fontSize: 9 }} />
                     <Tooltip content={<CustomTooltip />} />
                     <Line type="linear" dataKey="equity"
                       stroke={m.total_return_pct >= 0 ? "#00E676" : "#ef4444"}
@@ -325,10 +325,12 @@ export default function Backtest() {
                     <tr className="dim text-[10px] uppercase tracking-widest border-b border-[#222]">
                       <th className="text-left py-2 px-4">#</th>
                       <th className="text-left py-2 px-4">Side</th>
-                      <th className="text-right py-2 px-4">Entry ₹</th>
-                      <th className="text-right py-2 px-4">Exit ₹</th>
+                        <th className="text-right py-2 px-4">Inst</th>
+                        <th className="text-right py-2 px-4">Entry</th>
+                        <th className="text-right py-2 px-4">Exit</th>
                       <th className="text-right py-2 px-4">Qty</th>
-                      <th className="text-right py-2 px-4">P&L ₹</th>
+                        <th className="text-right py-2 px-4">P&L</th>
+                        <th className="text-left py-2 px-4">Reason</th>
                       <th className="text-left py-2 px-4">Time</th>
                     </tr>
                   </thead>
@@ -337,15 +339,23 @@ export default function Backtest() {
                       <tr key={i}>
                         <td className="py-2 px-4 dim mono">{i + 1}</td>
                         <td className={`py-2 px-4 mono font-bold ${t.side === "BUY" ? "buy" : "sell"}`}>{t.side}</td>
-                        <td className="py-2 px-4 text-right num">{fmtRupee(t.entry)}</td>
-                        <td className="py-2 px-4 text-right num">{fmtRupee(t.exit)}</td>
+                          <td className="py-2 px-4 text-right mono">{t.strike ? `${t.strike} ${t.type}` : "EQ"}</td>
+                          <td className="py-2 px-4 text-right num">
+                            {fmtRupee(t.entry_premium || t.entry)}
+                            {t.strike && <div className="text-[10px] dim">Idx: {fmtNum(t.index_entry)}</div>}
+                          </td>
+                          <td className="py-2 px-4 text-right num">
+                            {fmtRupee(t.exit_premium || t.exit)}
+                            {t.strike && <div className="text-[10px] dim">Idx: {fmtNum(t.index_exit)}</div>}
+                          </td>
                         <td className="py-2 px-4 text-right num dim">{t.qty}</td>
-                        <td className={`py-2 px-4 text-right num font-bold ${t.pnl >= 0 ? "buy" : "sell"}`}>{t.pnl >= 0 ? "+" : ""}{fmtRupee(t.pnl)}</td>
+                          <td className={`py-2 px-4 text-right num font-bold ${t.pnl >= 0 ? "buy" : "sell"}`}>{t.pnl >= 0 ? "+" : ""}{fmtRupee(t.pnl)}</td>
+                          <td className="py-2 px-4 text-left dim text-[10px] uppercase">{t.reason || "Strategy"}</td>
                         <td className="py-2 px-4 mono dim" style={{ fontSize: 10 }}>{String(t.ts || "").slice(0, 16)}</td>
                       </tr>
                     ))}
                     {trades.length === 0 && (
-                      <tr><td colSpan={7} className="p-8 text-center dim text-xs">No trades generated. Try a longer period or different symbol.</td></tr>
+                        <tr><td colSpan={9} className="p-8 text-center dim text-xs">No trades generated. Try a longer period or different symbol.</td></tr>
                     )}
                   </tbody>
                 </table>
