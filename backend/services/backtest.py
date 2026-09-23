@@ -22,14 +22,42 @@ import pandas as pd
 from db import sync_db
 
 def _load_symbol_data(symbol: str, period_days: int) -> pd.DataFrame:
-    """Fetch historical tick data from MongoDB."""
-    today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
-    start_time = today - timedelta(days=period_days)
+    """Fetch historical tick data from MongoDB, prioritizing days with option data if applicable."""
+    strike_intervals = {"NIFTY": 50, "BANKNIFTY": 100, "FINNIFTY": 50, "SENSEX": 100, "MIDCPNIFTY": 25, "BANKEX": 100}
+    is_index = symbol.upper() in strike_intervals
+    
+    # Find the last N distinct days of data. If it's an index, look at option_candles to guarantee option data exists
+    target_collection = sync_db.option_candles if is_index else sync_db.market_candles
+    
+    pipeline = [
+        {"$match": {"symbol": symbol.upper()}},
+        {"$project": {"date": {"$dateToString": {"format": "%Y-%m-%d", "date": "$ts"}}}},
+        {"$group": {"_id": "$date"}},
+        {"$sort": {"_id": -1}},
+        {"$limit": period_days}
+    ]
+    
+    dates = list(target_collection.aggregate(pipeline))
+    
+    # Fallback to market_candles if option_candles returned nothing for the index
+    if not dates and is_index:
+        dates = list(sync_db.market_candles.aggregate(pipeline))
+        
+    if not dates:
+        return pd.DataFrame()
+        
+    dates = sorted([d["_id"] for d in dates])
+    start_date_str = dates[0]
+    end_date_str = dates[-1]
+    
+    start_time = datetime.strptime(start_date_str, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+    # End time should be the end of the last day
+    end_time = datetime.strptime(end_date_str, "%Y-%m-%d").replace(hour=23, minute=59, second=59, tzinfo=timezone.utc)
     
     # Query mongodb for the ticks
     cursor = sync_db.market_candles.find({
         "symbol": symbol.upper(),
-        "ts": {"$gte": start_time}
+        "ts": {"$gte": start_time, "$lte": end_time}
     }).sort("ts", 1)
     
     docs = list(cursor)
