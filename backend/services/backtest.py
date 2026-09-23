@@ -437,24 +437,52 @@ def _mark_to_market(state: SimState, bar_close: float) -> float:
         return state.equity + (bar_close - state.entry_price) * state.qty * state.position
 
 
-def _close_position(state: SimState, fill: float, ts: str, final: bool = False) -> None:
+def _close_position(state: SimState, fill: float, ts: str, reason: str = "", final: bool = False) -> None:
     """Close any open position at `fill`. Updates equity, wins, trades, log."""
     if state.position == 0:
         return
-    pnl = (fill - state.entry_price) * state.qty * state.position
+        
+    if getattr(state, 'is_index', False):
+        exit_points = (fill - state.index_entry) * state.position
+        exit_premium = max(0.05, state.opt_entry_premium + exit_points * 0.5)
+        pnl = (exit_premium - state.opt_entry_premium) * state.qty
+        
+        entry = {
+            "side": "BUY" if state.position == 1 else "SELL",
+            "index_entry": round(state.index_entry, 2),
+            "index_exit": round(fill, 2),
+            "strike": state.opt_strike,
+            "type": state.opt_type,
+            "entry_premium": round(state.opt_entry_premium, 2),
+            "exit_premium": round(exit_premium, 2),
+            "qty": state.qty,
+            "pnl": round(pnl, 2),
+            "ts": ts,
+            "reason": reason or ("Strategy" if not final else "EOD")
+        }
+    else:
+        pnl = (fill - state.entry_price) * state.qty * state.position
+        entry = {
+            "side": "BUY" if state.position == 1 else "SELL",
+            "entry": round(state.entry_price, 2),
+            "exit": round(fill, 2),
+            "qty": state.qty,
+            "pnl": round(pnl, 2),
+            "ts": ts,
+            "reason": reason or ("Strategy" if not final else "EOD")
+        }
+        
     state.equity += pnl
     state.trades += 1
     if pnl > 0:
         state.wins += 1
-    entry = {
-        "side": "BUY" if state.position == 1 else "SELL",
-        "entry": state.entry_price, "exit": fill,
-        "qty": state.qty, "pnl": round(pnl, 2), "ts": ts,
-    }
+    
     if final:
         entry["final"] = True
+        
     state.trades_log.append(entry)
     state.position = 0
+    state.is_index = False
 
 
 def _open_position(state: SimState, symbol: str, side: int, fill: float, params: Dict = None) -> None:
