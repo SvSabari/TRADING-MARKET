@@ -429,7 +429,12 @@ def _mark_to_market(state: SimState, bar_close: float) -> float:
     """Return current equity including open-position MTM."""
     if state.position == 0:
         return state.equity
-    return state.equity + (bar_close - state.entry_price) * state.qty * state.position
+    if state.is_index:
+        points_gained = (bar_close - state.index_entry) * state.position
+        current_premium = max(0.05, state.opt_entry_premium + points_gained * 0.5)
+        return state.equity + (current_premium - state.opt_entry_premium) * state.qty
+    else:
+        return state.equity + (bar_close - state.entry_price) * state.qty * state.position
 
 
 def _close_position(state: SimState, fill: float, ts: str, final: bool = False) -> None:
@@ -452,7 +457,7 @@ def _close_position(state: SimState, fill: float, ts: str, final: bool = False) 
     state.position = 0
 
 
-def _open_position(state: SimState, side: int, fill: float, params: Dict = None) -> None:
+def _open_position(state: SimState, symbol: str, side: int, fill: float, params: Dict = None) -> None:
     """Open a new long/short position sized at ~95% of equity, or fixed lot size."""
     if state.equity <= 0:
         return
@@ -460,20 +465,46 @@ def _open_position(state: SimState, side: int, fill: float, params: Dict = None)
     params = params or {}
     fixed_qty = params.get("qty")
     
-    if fixed_qty and int(fixed_qty) > 0:
-        state.qty = int(fixed_qty)
-    else:
-        state.qty = max(1, int(state.equity * 0.95 / fill))
+    strike_intervals = {"NIFTY": 50, "BANKNIFTY": 100, "FINNIFTY": 50, "SENSEX": 100, "MIDCPNIFTY": 25, "BANKEX": 100}
+    is_index = symbol.upper() in strike_intervals
+    
+    if is_index:
+        interval = strike_intervals[symbol.upper()]
+        rounded_strike = int(round(fill / interval) * interval)
+        opt_type = "CE" if side == 1 else "PE"
+        entry_premium = 100.0  # Simulated ATM premium
         
-    state.position = side
-    state.entry_price = fill
+        state.is_index = True
+        state.index_entry = fill
+        state.opt_strike = rounded_strike
+        state.opt_type = opt_type
+        state.opt_entry_premium = entry_premium
+        
+        if fixed_qty and int(fixed_qty) > 0:
+            state.qty = int(fixed_qty)
+        else:
+            state.qty = max(1, int(state.equity * 0.95 / entry_premium))
+            
+        state.position = side
+        state.entry_price = entry_premium # for compatibility
+    else:
+        state.is_index = False
+        if fixed_qty and int(fixed_qty) > 0:
+            state.qty = int(fixed_qty)
+        else:
+            state.qty = max(1, int(state.equity * 0.95 / fill))
+            
+        state.position = side
+        state.entry_price = fill
 
 
-def _simulate(df: pd.DataFrame, signals: pd.Series, params: Dict = None) -> Dict:
+def _simulate(symbol: str, df: pd.DataFrame, signals: pd.Series, params: Dict = None) -> Dict:
     """Long/short single-position simulator with next-bar-open fills."""
     params = params or {}
     sl_pct = float(params.get("stop_loss_pct", 0.01))
     tp_pct = float(params.get("take_profit_pct", 0.02))
+    strike_intervals = {"NIFTY": 50, "BANKNIFTY": 100, "FINNIFTY": 50, "SENSEX": 100, "MIDCPNIFTY": 25, "BANKEX": 100}
+    is_index = symbol.upper() in strike_intervals
 
     if df.empty or len(df) < 3:
         return {"metrics": {}, "equity_curve": [], "trades_log": []}
@@ -501,12 +532,26 @@ def _simulate(df: pd.DataFrame, signals: pd.Series, params: Dict = None) -> Dict
         # Check Stop-Loss / Take-Profit / Intraday Square-off
         if state.position != 0:
             is_eod = any(t in ts_vals[i] for t in square_off_times)
-            pnl_pct = (bar_close - state.entry_price) / state.entry_price * state.position
             
-            if pnl_pct <= -sl_pct or pnl_pct >= tp_pct or is_eod:
+            if is_index:
+                points_gained = (bar_close - state.index_entry) * state.position
+                current_premium = max(0.05, state.opt_entry_premium + points_gained * 0.5)
+                pnl_pct = (current_premium - state.opt_entry_premium) / state.opt_entry_premium
+            else:
+                pnl_pct = (bar_close - state.entry_price) / state.entry_price * state.position
+            
+            reason = None
+            if pnl_pct <= -sl_pct:
+                reason = "SL"
+            elif pnl_pct >= tp_pct:
+                reason = "Target"
+            elif is_eod:
+                reason = "EOD"
+                
+            if reason:
                 fill = float(open_vals[i + 1])
                 if not math.isnan(fill):
-                    _close_position(state, fill, ts_vals[i + 1])
+                    _close_position(state, fill, ts_vals[i + 1], reason=reason)
                 continue
 
         if sig == 0 or sig == state.position:
@@ -515,13 +560,14 @@ def _simulate(df: pd.DataFrame, signals: pd.Series, params: Dict = None) -> Dict
         if math.isnan(fill):
             continue
         if state.position != 0:
-            _close_position(state, fill, ts_vals[i + 1])
+            _close_position(state, fill, ts_vals[i + 1], reason="Strategy")
         if sig in (1, -1):
-            _open_position(state, sig, fill, params)
+            _open_position(state, symbol, sig, fill, params)
 
     # final close on last bar
     last_close = float(close_vals[-1])
-    _close_position(state, last_close, ts_vals[-1], final=True)
+    if state.position != 0:
+        _close_position(state, last_close, ts_vals[-1], reason="EOD", final=True)
 
     rets = [c["equity"] for c in state.curve]
     pct_rets = [(rets[i] / rets[i - 1] - 1) for i in range(1, len(rets))] if len(rets) > 1 else [0]
@@ -556,7 +602,7 @@ def run_backtest(strategy_kind: str, symbol: str, period_days: int, params: Dict
         return {"metrics": {}, "equity_curve": [], "trades_log": [], "data_source": "none", "reason": "insufficient_candles"}
     sig_fn = _SIG_MAP.get(strategy_kind, _signals_ema_crossover)
     signals = sig_fn(candles, params)
-    res = _simulate(candles, signals, params)
+    res = _simulate(symbol, candles, signals, params)
     res["data_source"] = "parquet"
     res["bars_loaded"] = len(candles)
     res["raw_ticks"] = len(df)

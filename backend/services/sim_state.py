@@ -17,3 +17,9 @@ class SimState:
     trades: int = 0
     curve: List[Dict] = field(default_factory=list)
     trades_log: List[Dict] = field(default_factory=list)
+    # Option tracking
+    is_index: bool = False
+    index_entry: float = 0.0
+    opt_strike: int = 0
+    opt_type: str = ""
+    opt_entry_premium: float = 0.0
