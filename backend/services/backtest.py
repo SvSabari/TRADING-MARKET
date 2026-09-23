@@ -443,8 +443,24 @@ def _close_position(state: SimState, fill: float, ts: str, reason: str = "", fin
         return
         
     if getattr(state, 'is_index', False):
-        exit_points = (fill - state.index_entry) * state.position
-        exit_premium = max(0.05, state.opt_entry_premium + exit_points * 0.5)
+        from db import sync_db
+        import datetime
+        try:
+            ts_dt = datetime.datetime.fromisoformat(ts.replace("Z", "+00:00"))
+        except:
+            ts_dt = ts
+        opt_doc = sync_db.option_candles.find_one({
+            "symbol": state.trades_log[-1].get("symbol", "NIFTY") if state.trades_log else "NIFTY",
+            "strike": state.opt_strike,
+            "opt_type": state.opt_type,
+            "ts": {"$gte": ts_dt}
+        }, sort=[("ts", 1)])
+        
+        if opt_doc and (opt_doc["ts"] - ts_dt).total_seconds() <= 300:
+            exit_premium = float(opt_doc["ltp"])
+        else:
+            exit_points = (fill - state.index_entry) * state.position
+            exit_premium = max(0.05, state.opt_entry_premium + exit_points * 0.5)
         pnl = (exit_premium - state.opt_entry_premium) * state.qty
         
         entry = {
@@ -485,7 +501,7 @@ def _close_position(state: SimState, fill: float, ts: str, reason: str = "", fin
     state.is_index = False
 
 
-def _open_position(state: SimState, symbol: str, side: int, fill: float, params: Dict = None) -> None:
+def _open_position(state: SimState, symbol: str, side: int, fill: float, ts_str: str, params: Dict = None) -> None:
     """Open a new long/short position sized at ~95% of equity, or fixed lot size."""
     if state.equity <= 0:
         return
@@ -500,7 +516,29 @@ def _open_position(state: SimState, symbol: str, side: int, fill: float, params:
         interval = strike_intervals[symbol.upper()]
         rounded_strike = int(round(fill / interval) * interval)
         opt_type = "CE" if side == 1 else "PE"
-        entry_premium = 100.0  # Simulated ATM premium
+        
+        # Query MongoDB for real option premium at this timestamp
+        from db import sync_db
+        import datetime
+        try:
+            # Handle tz-aware timestamps
+            ts_dt = datetime.datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+        except:
+            ts_dt = ts_str
+            
+        # Find closest option tick within 5 minutes
+        opt_doc = sync_db.option_candles.find_one({
+            "symbol": symbol.upper(),
+            "strike": rounded_strike,
+            "opt_type": opt_type,
+            "ts": {"$gte": ts_dt}
+        }, sort=[("ts", 1)])
+        
+        if opt_doc and (opt_doc["ts"] - ts_dt).total_seconds() <= 300:
+            entry_premium = float(opt_doc["ltp"])
+        else:
+            # Fallback if no real data found
+            entry_premium = 100.0
         
         state.is_index = True
         state.index_entry = fill
@@ -561,14 +599,33 @@ def _simulate(symbol: str, df: pd.DataFrame, signals: pd.Series, params: Dict = 
         if state.position != 0:
             is_eod = any(t in ts_vals[i] for t in square_off_times)
             
+            reason = None
             if is_index:
-                points_gained = (bar_close - state.index_entry) * state.position
-                current_premium = max(0.05, state.opt_entry_premium + points_gained * 0.5)
+                # Fetch real option exit price
+                from db import sync_db
+                import datetime
+                try:
+                    ts_dt = datetime.datetime.fromisoformat(ts_vals[i].replace("Z", "+00:00"))
+                except:
+                    ts_dt = ts_vals[i]
+                    
+                opt_doc = sync_db.option_candles.find_one({
+                    "symbol": symbol.upper(),
+                    "strike": state.opt_strike,
+                    "opt_type": state.opt_type,
+                    "ts": {"$gte": ts_dt}
+                }, sort=[("ts", 1)])
+                
+                if opt_doc and (opt_doc["ts"] - ts_dt).total_seconds() <= 300:
+                    current_premium = float(opt_doc["ltp"])
+                else:
+                    points_gained = (bar_close - state.index_entry) * state.position
+                    current_premium = max(0.05, state.opt_entry_premium + points_gained * 0.5)
+                    
                 pnl_pct = (current_premium - state.opt_entry_premium) / state.opt_entry_premium
             else:
                 pnl_pct = (bar_close - state.entry_price) / state.entry_price * state.position
             
-            reason = None
             if pnl_pct <= -sl_pct:
                 reason = "SL"
             elif pnl_pct >= tp_pct:
@@ -590,7 +647,7 @@ def _simulate(symbol: str, df: pd.DataFrame, signals: pd.Series, params: Dict = 
         if state.position != 0:
             _close_position(state, fill, ts_vals[i + 1], reason="Strategy")
         if sig in (1, -1):
-            _open_position(state, symbol, sig, fill, params)
+            _open_position(state, symbol, sig, fill, ts_vals[i + 1], params)
 
     # final close on last bar
     last_close = float(close_vals[-1])
