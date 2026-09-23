@@ -39,7 +39,7 @@ export default function Topbar() {
         </span>
       </div>
       <div className="flex-1 flex justify-center items-center overflow-hidden" data-testid="project-title">
-        <span className="font-bold tracking-widest text-[var(--brand)] text-lg" style={{ fontFamily: "Space Grotesk, sans-serif" }}>TRADING TERMINAL</span>
+        <span className="font-bold tracking-widest text-[var(--brand)] text-lg" style={{ fontFamily: "Space Grotesk, sans-serif" }}>TRADERS PRO</span>
       </div>
       <Link to="/notifications" data-testid="notifications-btn" className="btn-ghost btn relative shrink-0">
         <Bell size={14} weight="bold" />

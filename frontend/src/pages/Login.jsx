@@ -98,7 +98,7 @@ export default function Login() {
             <div className="w-10 h-10 rounded-lg flex items-center justify-center shadow-sm" style={{ background: "var(--brand)", color: "#FFF", fontFamily: "Outfit", fontWeight: 800, fontSize: 20 }}>T</div>
             <div>
               <div style={{ fontFamily: "Outfit", fontWeight: 800, fontSize: 20, letterSpacing: "-0.02em", color: "var(--text-primary)" }}>TRADE</div>
-              <div className="text-[10px] uppercase tracking-widest mono font-bold" style={{ color: "var(--brand)" }}>trading terminal</div>
+              <div className="text-[10px] uppercase tracking-widest mono font-bold" style={{ color: "var(--brand)" }}>TRADERS PRO</div>
             </div>
           </div>
 
