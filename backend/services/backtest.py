@@ -475,16 +475,25 @@ def _close_position(state: SimState, fill: float, ts: str, reason: str = "", fin
         import datetime
         try:
             ts_dt = datetime.datetime.fromisoformat(ts.replace("Z", "+00:00")).replace(tzinfo=None)
+            ts_dt_utc = ts_dt - datetime.timedelta(hours=5, minutes=30)
         except:
-            ts_dt = ts
+            ts_dt_utc = ts
+        # Try exact strike first, then any strike for the same opt_type
+        symbol_for_close = state.trades_log[-1].get("symbol", "NIFTY") if state.trades_log else "NIFTY"
         opt_doc = sync_db.option_candles.find_one({
-            "symbol": state.trades_log[-1].get("symbol", "NIFTY") if state.trades_log else "NIFTY",
-            "strike": state.opt_strike,
+            "symbol": symbol_for_close,
+            "strike": float(state.opt_strike),
             "opt_type": state.opt_type,
-            "ts": {"$gte": ts_dt}
+            "ts": {"$gte": ts_dt_utc}
         }, sort=[("ts", 1)])
+        if not opt_doc or (opt_doc["ts"] - ts_dt_utc).total_seconds() > 1800:
+            opt_doc = sync_db.option_candles.find_one({
+                "symbol": symbol_for_close,
+                "opt_type": state.opt_type,
+                "ts": {"$gte": ts_dt_utc}
+            }, sort=[("ts", 1)])
         
-        if opt_doc and (opt_doc["ts"] - ts_dt).total_seconds() <= 300:
+        if opt_doc and (opt_doc["ts"] - ts_dt_utc).total_seconds() <= 1800:
             exit_premium = float(opt_doc["ltp"])
         else:
             exit_points = (fill - state.index_entry) * state.position
@@ -549,24 +558,37 @@ def _open_position(state: SimState, symbol: str, side: int, fill: float, ts_str:
         from db import sync_db
         import datetime
         try:
-            # Handle tz-aware timestamps
+            # market_candles timestamps are stored in IST (naive). Convert to UTC for option_candles lookup.
             ts_dt = datetime.datetime.fromisoformat(ts_str.replace("Z", "+00:00")).replace(tzinfo=None)
+            ts_dt_utc = ts_dt - datetime.timedelta(hours=5, minutes=30)
         except:
-            ts_dt = ts_str
-            
-        # Find closest option tick within 5 minutes
-        opt_doc = sync_db.option_candles.find_one({
-            "symbol": symbol.upper(),
-            "strike": rounded_strike,
-            "opt_type": opt_type,
-            "ts": {"$gte": ts_dt}
-        }, sort=[("ts", 1)])
-        
-        if opt_doc and (opt_doc["ts"] - ts_dt).total_seconds() <= 300:
-            entry_premium = float(opt_doc["ltp"])
-        else:
-            # Fallback if no real data found: estimate ATM premium as ~1% of index price
-            entry_premium = round(fill * 0.01, 2)
+            ts_dt_utc = ts_str
+
+        def _fetch_opt_premium(sym, strike, otype, ts_utc, window_seconds=1800):
+            """Try exact strike, then nearest available strike within 30-min window."""
+            doc = sync_db.option_candles.find_one({
+                "symbol": sym,
+                "strike": float(strike),
+                "opt_type": otype,
+                "ts": {"$gte": ts_utc}
+            }, sort=[("ts", 1)])
+            if doc and (doc["ts"] - ts_utc).total_seconds() <= window_seconds:
+                return float(doc["ltp"])
+            # No exact strike match – try any available strike nearby to get a realistic premium
+            doc2 = sync_db.option_candles.find_one({
+                "symbol": sym,
+                "opt_type": otype,
+                "ts": {"$gte": ts_utc}
+            }, sort=[("ts", 1)])
+            if doc2 and (doc2["ts"] - ts_utc).total_seconds() <= window_seconds:
+                return float(doc2["ltp"])
+            return None
+
+        entry_premium = _fetch_opt_premium(symbol.upper(), rounded_strike, opt_type, ts_dt_utc)
+        if entry_premium is None or entry_premium <= 0:
+            # No real data at all – use Black-Scholes-like approximation: ATM premium ≈ 0.4% of index
+            entry_premium = round(fill * 0.004, 2)
+
         
         state.is_index = True
         state.index_entry = fill
@@ -629,22 +651,29 @@ def _simulate(symbol: str, df: pd.DataFrame, signals: pd.Series, params: Dict = 
             
             reason = None
             if is_index:
-                # Fetch real option exit price
+                # Fetch real option exit price – market_candles in IST, option_candles in UTC
                 from db import sync_db
                 import datetime
                 try:
                     ts_dt = datetime.datetime.fromisoformat(ts_vals[i].replace("Z", "+00:00")).replace(tzinfo=None)
+                    ts_dt_utc = ts_dt - datetime.timedelta(hours=5, minutes=30)
                 except:
-                    ts_dt = ts_vals[i]
+                    ts_dt_utc = ts_vals[i]
                     
                 opt_doc = sync_db.option_candles.find_one({
                     "symbol": symbol.upper(),
-                    "strike": state.opt_strike,
+                    "strike": float(state.opt_strike),
                     "opt_type": state.opt_type,
-                    "ts": {"$gte": ts_dt}
+                    "ts": {"$gte": ts_dt_utc}
                 }, sort=[("ts", 1)])
+                if not opt_doc or (opt_doc["ts"] - ts_dt_utc).total_seconds() > 1800:
+                    opt_doc = sync_db.option_candles.find_one({
+                        "symbol": symbol.upper(),
+                        "opt_type": state.opt_type,
+                        "ts": {"$gte": ts_dt_utc}
+                    }, sort=[("ts", 1)])
                 
-                if opt_doc and (opt_doc["ts"] - ts_dt).total_seconds() <= 300:
+                if opt_doc and (opt_doc["ts"] - ts_dt_utc).total_seconds() <= 1800:
                     current_premium = float(opt_doc["ltp"])
                 else:
                     points_gained = (bar_close - state.index_entry) * state.position
