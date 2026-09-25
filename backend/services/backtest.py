@@ -474,7 +474,7 @@ def _close_position(state: SimState, fill: float, ts: str, reason: str = "", fin
         from db import sync_db
         import datetime
         try:
-            ts_dt = datetime.datetime.fromisoformat(ts.replace("Z", "+00:00"))
+            ts_dt = datetime.datetime.fromisoformat(ts.replace("Z", "+00:00")).replace(tzinfo=None)
         except:
             ts_dt = ts
         opt_doc = sync_db.option_candles.find_one({
@@ -550,7 +550,7 @@ def _open_position(state: SimState, symbol: str, side: int, fill: float, ts_str:
         import datetime
         try:
             # Handle tz-aware timestamps
-            ts_dt = datetime.datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+            ts_dt = datetime.datetime.fromisoformat(ts_str.replace("Z", "+00:00")).replace(tzinfo=None)
         except:
             ts_dt = ts_str
             
@@ -633,7 +633,7 @@ def _simulate(symbol: str, df: pd.DataFrame, signals: pd.Series, params: Dict = 
                 from db import sync_db
                 import datetime
                 try:
-                    ts_dt = datetime.datetime.fromisoformat(ts_vals[i].replace("Z", "+00:00"))
+                    ts_dt = datetime.datetime.fromisoformat(ts_vals[i].replace("Z", "+00:00")).replace(tzinfo=None)
                 except:
                     ts_dt = ts_vals[i]
                     
