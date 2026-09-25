@@ -22,9 +22,11 @@ import pandas as pd
 from db import sync_db
 
 def _load_symbol_data(symbol: str, period_days: int) -> pd.DataFrame:
-    """Fetch historical tick data from MongoDB based on available market_candles days."""
-    
-    # Always use market_candles to find available days — option_candles may have fewer dates
+    """Fetch historical tick data from MongoDB.
+    Loads up to period_days of distinct trading days from market_candles.
+    If fewer days are available, returns what exists.
+    """
+    # Get all distinct available dates for this symbol (most recent first)
     pipeline = [
         {"$match": {"symbol": symbol.upper()}},
         {"$project": {"date": {"$dateToString": {"format": "%Y-%m-%d", "date": "$ts"}}}},
@@ -32,34 +34,46 @@ def _load_symbol_data(symbol: str, period_days: int) -> pd.DataFrame:
         {"$sort": {"_id": -1}},
         {"$limit": period_days}
     ]
-    
+
     dates = list(sync_db.market_candles.aggregate(pipeline))
-        
+
     if not dates:
         return pd.DataFrame()
-        
+
     dates = sorted([d["_id"] for d in dates])
     start_date_str = dates[0]
     end_date_str = dates[-1]
-    
-    start_time = datetime.strptime(start_date_str, "%Y-%m-%d").replace(tzinfo=timezone.utc)
-    # End time should be the end of the last day
-    end_time = datetime.strptime(end_date_str, "%Y-%m-%d").replace(hour=23, minute=59, second=59, tzinfo=timezone.utc)
-    
-    # Query mongodb for the ticks
+
+    # How many days are we missing vs what was requested?
+    available_days = len(dates)
+    missing_days = max(0, period_days - available_days)
+    if missing_days > 0:
+        import logging
+        logging.getLogger("backtest").info(
+            f"Requested {period_days} days for {symbol}, "
+            f"only {available_days} days available in DB. "
+            f"Missing {missing_days} days of data."
+        )
+
+    # No timezone: market_candles timestamps are stored as naive IST datetimes
+    start_time = datetime.strptime(start_date_str, "%Y-%m-%d")
+    end_time = datetime.strptime(end_date_str, "%Y-%m-%d").replace(hour=23, minute=59, second=59)
+
     cursor = sync_db.market_candles.find({
         "symbol": symbol.upper(),
         "ts": {"$gte": start_time, "$lte": end_time}
     }).sort("ts", 1)
-    
+
     docs = list(cursor)
     if not docs:
         return pd.DataFrame()
-        
+
     df = pd.DataFrame(docs)
-    df["ts"] = pd.to_datetime(df["ts"], utc=True, errors="coerce")
+    # Keep as naive (IST) — don't relabel as UTC
+    df["ts"] = pd.to_datetime(df["ts"], errors="coerce")
     df = df.dropna(subset=["ts"]).sort_values("ts").reset_index(drop=True)
     return df
+
 
 
 def _resample(df: pd.DataFrame, rule: str = "1min") -> pd.DataFrame:
@@ -734,10 +748,18 @@ def run_backtest(strategy_kind: str, symbol: str, period_days: int, params: Dict
     candles = _resample(df, rule)
     if len(candles) < 30:
         return {"metrics": {}, "equity_curve": [], "trades_log": [], "data_source": "none", "reason": "insufficient_candles"}
+
+    # Calculate how many distinct days are actually in the candles
+    days_available = candles["ts"].dt.date.nunique() if not candles.empty else 0
+    days_missing = max(0, period_days - days_available)
+
     sig_fn = _SIG_MAP.get(strategy_kind, _signals_ema_crossover)
     signals = sig_fn(candles, params)
     res = _simulate(symbol, candles, signals, params)
     res["data_source"] = "parquet"
     res["bars_loaded"] = len(candles)
+    res["days_available"] = days_available
+    res["days_missing"] = days_missing
+    res["days_requested"] = period_days
     res["raw_ticks"] = len(df)
     return res
