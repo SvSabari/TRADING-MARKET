@@ -22,13 +22,9 @@ import pandas as pd
 from db import sync_db
 
 def _load_symbol_data(symbol: str, period_days: int) -> pd.DataFrame:
-    """Fetch historical tick data from MongoDB, prioritizing days with option data if applicable."""
-    strike_intervals = {"NIFTY": 50, "BANKNIFTY": 100, "FINNIFTY": 50, "SENSEX": 100, "MIDCPNIFTY": 25, "BANKEX": 100}
-    is_index = symbol.upper() in strike_intervals
+    """Fetch historical tick data from MongoDB based on available market_candles days."""
     
-    # Find the last N distinct days of data. If it's an index, look at option_candles to guarantee option data exists
-    target_collection = sync_db.option_candles if is_index else sync_db.market_candles
-    
+    # Always use market_candles to find available days — option_candles may have fewer dates
     pipeline = [
         {"$match": {"symbol": symbol.upper()}},
         {"$project": {"date": {"$dateToString": {"format": "%Y-%m-%d", "date": "$ts"}}}},
@@ -37,11 +33,7 @@ def _load_symbol_data(symbol: str, period_days: int) -> pd.DataFrame:
         {"$limit": period_days}
     ]
     
-    dates = list(target_collection.aggregate(pipeline))
-    
-    # Fallback to market_candles if option_candles returned nothing for the index
-    if not dates and is_index:
-        dates = list(sync_db.market_candles.aggregate(pipeline))
+    dates = list(sync_db.market_candles.aggregate(pipeline))
         
     if not dates:
         return pd.DataFrame()
