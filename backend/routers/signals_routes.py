@@ -30,7 +30,11 @@ async def run(body: BacktestRequest, user: User = Depends(get_current_user)):
         equity_curve=result["equity_curve"],
         trades_log=result["trades_log"],
     )
-    await db.backtests.insert_one(run_doc.to_mongo())
+    try:
+        await db.backtests.insert_one(run_doc.to_mongo())
+    except Exception as e:
+        import logging
+        logging.getLogger("backtest").warning(f"Could not save backtest history (DB full?): {e}")
     return {"id": run_doc.id, **result}
 
 
