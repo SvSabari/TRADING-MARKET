@@ -527,8 +527,11 @@ def _close_position(state: SimState, fill: float, ts: str, reason: str = "", fin
             "index_exit": round(fill, 2),
             "strike": state.opt_strike,
             "type": state.opt_type,
+            "expiry": getattr(state, "opt_expiry", None),
             "entry_premium": round(state.opt_entry_premium, 2),
             "exit_premium": round(exit_premium, 2),
+            "entry_source": getattr(state, "opt_entry_source", "SIMULATED"),
+            "exit_source": "REAL" if (opt_doc and (opt_doc["ts"] - ts_dt_utc).total_seconds() <= 1800) else "SIMULATED",
             "qty": state.qty,
             "pnl": round(pnl, 2),
             "ts": ts,
@@ -594,8 +597,8 @@ def _open_position(state: SimState, symbol: str, side: int, fill: float, ts_str:
                 "ts": {"$gte": ts_utc}
             }, sort=[("ts", 1)])
             if doc and (doc["ts"] - ts_utc).total_seconds() <= window_seconds:
-                print(f"[ENTRY] EXACT MATCH: {sym} {strike} {otype} req_ts={ts_utc} -> found ts={doc['ts']} expiry={doc.get('expiry')} ltp=₹{doc['ltp']}")
-                return float(doc["ltp"]), float(doc["strike"]), doc.get("expiry")
+                print(f"[ENTRY] EXACT MATCH: {sym} {strike} {otype} req_ts={ts_utc} -> found ts={doc['ts']} expiry={doc.get('expiry')} ltp=Rs{doc['ltp']}")
+                return float(doc["ltp"]), float(doc["strike"]), doc.get("expiry"), "REAL_EXACT"
             # No exact strike match – try any available strike nearby to get a realistic premium
             doc2 = sync_db.option_candles.find_one({
                 "symbol": sym,
@@ -603,17 +606,18 @@ def _open_position(state: SimState, symbol: str, side: int, fill: float, ts_str:
                 "ts": {"$gte": ts_utc}
             }, sort=[("ts", 1)])
             if doc2 and (doc2["ts"] - ts_utc).total_seconds() <= window_seconds:
-                print(f"[ENTRY] FALLBACK STRIKE: {sym} req_strike={strike} {otype} req_ts={ts_utc} -> found strike={doc2['strike']} ts={doc2['ts']} expiry={doc2.get('expiry')} ltp=₹{doc2['ltp']}")
-                return float(doc2["ltp"]), float(doc2["strike"]), doc2.get("expiry")
+                print(f"[ENTRY] FALLBACK STRIKE: {sym} req_strike={strike} {otype} req_ts={ts_utc} -> found strike={doc2['strike']} ts={doc2['ts']} expiry={doc2.get('expiry')} ltp=Rs{doc2['ltp']}")
+                return float(doc2["ltp"]), float(doc2["strike"]), doc2.get("expiry"), "REAL_FALLBACK"
             
             print(f"[ENTRY] NO DATA: {sym} {strike} {otype} req_ts={ts_utc} within {window_seconds}s window")
-            return None, strike, None
+            return None, strike, None, "SIMULATED"
 
-        entry_premium, actual_strike, actual_expiry = _fetch_opt_premium(symbol.upper(), rounded_strike, opt_type, ts_dt_utc)
+        entry_premium, actual_strike, actual_expiry, entry_source = _fetch_opt_premium(symbol.upper(), rounded_strike, opt_type, ts_dt_utc)
         if entry_premium is None or entry_premium <= 0:
             # No real data at all – use Black-Scholes-like approximation: ATM premium ≈ 0.4% of index
             entry_premium = round(fill * 0.004, 2)
-            print(f"[ENTRY] SIMULATED: Used 0.4% baseline ₹{entry_premium} for {symbol.upper()} {rounded_strike} {opt_type}")
+            entry_source = "SIMULATED"
+            print(f"[ENTRY] SIMULATED: Used 0.4% baseline Rs{entry_premium} for {symbol.upper()} {rounded_strike} {opt_type}")
 
         
         state.is_index = True
@@ -622,6 +626,7 @@ def _open_position(state: SimState, symbol: str, side: int, fill: float, ts_str:
         state.opt_type = opt_type
         state.opt_expiry = actual_expiry
         state.opt_entry_premium = entry_premium
+        state.opt_entry_source = entry_source
         
         if fixed_qty and int(fixed_qty) > 0:
             state.qty = int(fixed_qty)

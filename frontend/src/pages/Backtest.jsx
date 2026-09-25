@@ -335,25 +335,34 @@ export default function Backtest() {
                     </tr>
                   </thead>
                   <tbody className="cell-divider">
-                    {trades.map((t, i) => (
-                      <tr key={i}>
-                        <td className="py-2 px-4 dim mono">{i + 1}</td>
-                        <td className={`py-2 px-4 mono font-bold ${t.side === "BUY" ? "buy" : "sell"}`}>{t.side}</td>
-                          <td className="py-2 px-4 text-right mono">{t.strike ? `${t.strike} ${t.type}` : "EQ"}</td>
-                          <td className="py-2 px-4 text-right num">
-                            {fmtRupee(t.entry_premium || t.entry)}
-                            {t.strike && <div className="text-[10px] dim">Idx: {fmtNum(t.index_entry)}</div>}
-                          </td>
-                          <td className="py-2 px-4 text-right num">
-                            {fmtRupee(t.exit_premium || t.exit)}
-                            {t.strike && <div className="text-[10px] dim">Idx: {fmtNum(t.index_exit)}</div>}
-                          </td>
-                        <td className="py-2 px-4 text-right num dim">{t.qty}</td>
-                          <td className={`py-2 px-4 text-right num font-bold ${t.pnl >= 0 ? "buy" : "sell"}`}>{t.pnl >= 0 ? "+" : ""}{fmtRupee(t.pnl)}</td>
-                          <td className="py-2 px-4 text-left dim text-[10px] uppercase">{t.reason || "Strategy"}</td>
-                        <td className="py-2 px-4 mono dim" style={{ fontSize: 10 }}>{String(t.ts || "").slice(0, 16)}</td>
-                      </tr>
-                    ))}
+                    {trades.map((t, i) => {
+                        const srcColor = (src) => src === "REAL_EXACT" ? "#00E676" : src === "REAL_FALLBACK" ? "#FFB300" : "#ef4444";
+                        const srcLabel = (src) => src === "REAL_EXACT" ? "REAL" : src === "REAL_FALLBACK" ? "FALLBACK" : "SIM";
+                        return (
+                        <tr key={i}>
+                          <td className="py-2 px-4 dim mono">{i + 1}</td>
+                          <td className={`py-2 px-4 mono font-bold ${t.side === "BUY" ? "buy" : "sell"}`}>{t.side}</td>
+                            <td className="py-2 px-4 text-right mono">
+                              {t.strike ? `${t.strike} ${t.type}` : "EQ"}
+                              {t.expiry && <div className="text-[9px] dim">{t.expiry}</div>}
+                            </td>
+                            <td className="py-2 px-4 text-right num">
+                              {fmtRupee(t.entry_premium || t.entry)}
+                              {t.strike && <div className="text-[10px] dim">Idx: {fmtNum(t.index_entry)}</div>}
+                              {t.entry_source && <div style={{ fontSize: 9, color: srcColor(t.entry_source), fontFamily: "JetBrains Mono", fontWeight: 700 }}>{srcLabel(t.entry_source)}</div>}
+                            </td>
+                            <td className="py-2 px-4 text-right num">
+                              {fmtRupee(t.exit_premium || t.exit)}
+                              {t.strike && <div className="text-[10px] dim">Idx: {fmtNum(t.index_exit)}</div>}
+                              {t.exit_source && <div style={{ fontSize: 9, color: srcColor(t.exit_source), fontFamily: "JetBrains Mono", fontWeight: 700 }}>{srcLabel(t.exit_source)}</div>}
+                            </td>
+                          <td className="py-2 px-4 text-right num dim">{t.qty}</td>
+                            <td className={`py-2 px-4 text-right num font-bold ${t.pnl >= 0 ? "buy" : "sell"}`}>{t.pnl >= 0 ? "+" : ""}{fmtRupee(t.pnl)}</td>
+                            <td className="py-2 px-4 text-left dim text-[10px] uppercase">{t.reason || "Strategy"}</td>
+                          <td className="py-2 px-4 mono dim" style={{ fontSize: 10 }}>{String(t.ts || "").slice(0, 16)}</td>
+                        </tr>
+                        );
+                      })}
                     {trades.length === 0 && (
                         <tr><td colSpan={9} className="p-8 text-center dim text-xs">No trades generated. Try a longer period or different symbol.</td></tr>
                     )}
