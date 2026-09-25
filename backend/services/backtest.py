@@ -657,33 +657,10 @@ def _simulate(symbol: str, df: pd.DataFrame, signals: pd.Series, params: Dict = 
             
             reason = None
             if is_index:
-                # Fetch real option exit price – market_candles in IST, option_candles in UTC
-                from db import sync_db
-                import datetime
-                try:
-                    ts_dt = datetime.datetime.fromisoformat(ts_vals[i].replace("Z", "+00:00")).replace(tzinfo=None)
-                    ts_dt_utc = ts_dt - datetime.timedelta(hours=5, minutes=30)
-                except:
-                    ts_dt_utc = ts_vals[i]
-                    
-                opt_doc = sync_db.option_candles.find_one({
-                    "symbol": symbol.upper(),
-                    "strike": float(state.opt_strike),
-                    "opt_type": state.opt_type,
-                    "ts": {"$gte": ts_dt_utc}
-                }, sort=[("ts", 1)])
-                if not opt_doc or (opt_doc["ts"] - ts_dt_utc).total_seconds() > 1800:
-                    opt_doc = sync_db.option_candles.find_one({
-                        "symbol": symbol.upper(),
-                        "opt_type": state.opt_type,
-                        "ts": {"$gte": ts_dt_utc}
-                    }, sort=[("ts", 1)])
-                
-                if opt_doc and (opt_doc["ts"] - ts_dt_utc).total_seconds() <= 1800:
-                    current_premium = float(opt_doc["ltp"])
-                else:
-                    points_gained = (bar_close - state.index_entry) * state.position
-                    current_premium = max(0.05, state.opt_entry_premium + points_gained * 0.5)
+                # ESTIMATE option premium for SL/TP check to prevent making 1000s of slow DB queries in this loop.
+                # The REAL exit premium will be accurately fetched from the DB inside _close_position when the trade actually closes.
+                points_gained = (bar_close - state.index_entry) * state.position
+                current_premium = max(0.05, state.opt_entry_premium + points_gained * 0.5)
                     
                 pnl_pct = ((current_premium - state.opt_entry_premium) / state.opt_entry_premium) * state.position
             else:
