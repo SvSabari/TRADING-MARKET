@@ -565,8 +565,8 @@ def _open_position(state: SimState, symbol: str, side: int, fill: float, ts_str:
         if opt_doc and (opt_doc["ts"] - ts_dt).total_seconds() <= 300:
             entry_premium = float(opt_doc["ltp"])
         else:
-            # Fallback if no real data found
-            entry_premium = 100.0
+            # Fallback if no real data found: estimate ATM premium as ~1% of index price
+            entry_premium = round(fill * 0.01, 2)
         
         state.is_index = True
         state.index_entry = fill
