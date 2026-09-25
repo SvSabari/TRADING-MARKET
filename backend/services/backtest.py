@@ -515,11 +515,14 @@ def _close_position(state: SimState, fill: float, ts: str, reason: str = "", fin
             if opt_doc and (opt_doc["ts"] - ts_dt_utc).total_seconds() <= 1800:
                 exit_premium = float(opt_doc["ltp"])
                 print(f"[EXIT] MATCHED: {symbol_for_close} strike={opt_doc['strike']} {state.opt_type} ts={opt_doc['ts']} expiry={opt_doc.get('expiry')} ltp=₹{opt_doc['ltp']}")
+                pnl = (exit_premium - state.opt_entry_premium) * state.qty * state.position
+                exit_source_label = "REAL_EXACT" if (getattr(state, "opt_expiry", None) and opt_doc.get("expiry") == getattr(state, "opt_expiry", None)) else "REAL_FALLBACK"
             else:
-                exit_points = (fill - state.index_entry) * state.position
-                exit_premium = max(0.05, state.opt_entry_premium + exit_points * 0.5)
-                print(f"[EXIT] SIMULATED: No DB match within 30min for {symbol_for_close} {state.opt_strike} {state.opt_type} req_ts={ts_dt_utc} — estimated ₹{exit_premium:.2f}")
-        pnl = (exit_premium - state.opt_entry_premium) * state.qty * state.position
+                exit_premium = 0
+                print(f"[EXIT] NO DATA: No DB match within 30min for {symbol_for_close} {state.opt_strike} {state.opt_type} req_ts={ts_dt_utc}")
+                pnl = 0
+                exit_source_label = "NO DATA"
+                reason = "MISSING DATA"
         
         entry = {
             "side": "BUY" if state.position == 1 else "SELL",
@@ -531,8 +534,8 @@ def _close_position(state: SimState, fill: float, ts: str, reason: str = "", fin
             "entry_premium": round(state.opt_entry_premium, 2),
             "exit_premium": round(exit_premium, 2),
             "entry_source": getattr(state, "opt_entry_source", "SIMULATED"),
-            "exit_source": "REAL" if (opt_doc and (opt_doc["ts"] - ts_dt_utc).total_seconds() <= 1800) else "SIMULATED",
-            "qty": state.qty,
+            "exit_source": exit_source_label,
+            "qty": state.qty if exit_source_label != "NO DATA" else 0,
             "pnl": round(pnl, 2),
             "ts": ts,
             "reason": reason or ("Strategy" if not final else "EOD")
@@ -550,9 +553,10 @@ def _close_position(state: SimState, fill: float, ts: str, reason: str = "", fin
         }
         
     state.equity += pnl
-    state.trades += 1
-    if pnl > 0:
-        state.wins += 1
+    if reason != "MISSING DATA":
+        state.trades += 1
+        if pnl > 0:
+            state.wins += 1
     
     if final:
         entry["final"] = True
@@ -614,10 +618,25 @@ def _open_position(state: SimState, symbol: str, side: int, fill: float, ts_str:
 
         entry_premium, actual_strike, actual_expiry, entry_source = _fetch_opt_premium(symbol.upper(), rounded_strike, opt_type, ts_dt_utc)
         if entry_premium is None or entry_premium <= 0:
-            # No real data at all – use Black-Scholes-like approximation: ATM premium ≈ 0.4% of index
-            entry_premium = round(fill * 0.004, 2)
-            entry_source = "SIMULATED"
-            print(f"[ENTRY] SIMULATED: Used 0.4% baseline Rs{entry_premium} for {symbol.upper()} {rounded_strike} {opt_type}")
+            print(f"[ENTRY] SKIPPING TRADE: No option data for {symbol.upper()} {rounded_strike} {opt_type} at {ts_dt_utc}")
+            # Add to trade log as a skipped trade
+            state.trades_log.append({
+                "side": "BUY" if side == 1 else "SELL",
+                "index_entry": round(fill, 2),
+                "index_exit": round(fill, 2),
+                "strike": rounded_strike,
+                "type": opt_type,
+                "expiry": None,
+                "entry_premium": 0,
+                "exit_premium": 0,
+                "entry_source": "NO DATA",
+                "exit_source": "NO DATA",
+                "qty": 0,
+                "pnl": 0,
+                "ts": ts_str,
+                "reason": "MISSING DATA"
+            })
+            return
 
         
         state.is_index = True

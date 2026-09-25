@@ -31,24 +31,18 @@ async def scrape_historical_options():
         logger.error(f"Could not read NFO.csv: {e}")
         return
 
-    # Filter for NIFTY and BANKNIFTY options in Sept 2026
-    # Trading Symbol format: BANKNIFTY29SEP26C45000
+    # Filter for NIFTY, BANKNIFTY, FINNIFTY, SENSEX, MIDCPNIFTY, BANKEX options in Sept 2026
     options = df[
-        (df["Symbol"].isin(["NIFTY", "BANKNIFTY"])) & 
-        (df["Instrument Type"] == "OPTIDX") & 
+        (df["Symbol"].isin(["NIFTY", "BANKNIFTY", "FINNIFTY", "SENSEX", "MIDCPNIFTY", "BANKEX"])) & 
+        (df["Instrument Type"].isin(["OPTIDX"])) & 
         (df["Trading Symbol"].str.contains("SEP26", na=False))
     ]
     
-    from_date = datetime.datetime(2026, 9, 9)
-    to_date = datetime.datetime(2026, 9, 12) # focus on sept 10!
+    # We grab a reasonable range from earlier this month
+    from_date = datetime.datetime.now() - datetime.timedelta(days=7)
+    to_date = datetime.datetime.now()
     
     docs = []
-    
-    # For testing, just get strikes close to ATM (e.g. 56000-57000 for BANKNIFTY)
-    # The backtest is around 56400 to 56500. So let's grab 56200 to 56600
-    options = options[
-        ((options["Symbol"] == "BANKNIFTY") & (options["Strike Price"].astype(float) >= 56000) & (options["Strike Price"].astype(float) <= 56700))
-    ]
     
     logger.info(f"Fetching historical data for {len(options)} tokens...")
     

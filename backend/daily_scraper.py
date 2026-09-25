@@ -1,4 +1,4 @@
-﻿import asyncio
+import asyncio
 import datetime
 from datetime import timezone
 import logging
@@ -25,8 +25,8 @@ async def scrape_options():
         
     logger.info(f"Authenticated AliceBlue for user {client_doc['user_id']}")
     
-    # We want NIFTY and BANKNIFTY options
-    symbols = ["NIFTY", "BANKNIFTY"]
+    # We want ALL supported indices for backtesting
+    symbols = ["NIFTY", "BANKNIFTY", "FINNIFTY", "SENSEX", "MIDCPNIFTY", "BANKEX"]
     
     today = datetime.datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     from_date = datetime.datetime.now() - datetime.timedelta(days=1)
