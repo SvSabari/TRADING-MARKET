@@ -504,7 +504,7 @@ def _close_position(state: SimState, fill: float, ts: str, reason: str = "", fin
         else:
             exit_points = (fill - state.index_entry) * state.position
             exit_premium = max(0.05, state.opt_entry_premium + exit_points * 0.5)
-        pnl = (exit_premium - state.opt_entry_premium) * state.qty
+        pnl = (exit_premium - state.opt_entry_premium) * state.qty * state.position
         
         entry = {
             "side": "BUY" if state.position == 1 else "SELL",
@@ -685,7 +685,7 @@ def _simulate(symbol: str, df: pd.DataFrame, signals: pd.Series, params: Dict = 
                     points_gained = (bar_close - state.index_entry) * state.position
                     current_premium = max(0.05, state.opt_entry_premium + points_gained * 0.5)
                     
-                pnl_pct = (current_premium - state.opt_entry_premium) / state.opt_entry_premium
+                pnl_pct = ((current_premium - state.opt_entry_premium) / state.opt_entry_premium) * state.position
             else:
                 pnl_pct = (bar_close - state.entry_price) / state.entry_price * state.position
             
