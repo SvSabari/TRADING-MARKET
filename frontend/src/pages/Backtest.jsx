@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { fmtNum, fmtPct, fmtRupee } from "@/lib/format";
@@ -247,7 +247,7 @@ export default function Backtest() {
           <button className="btn btn-primary" disabled={busy} onClick={run} data-testid="bt-run-btn"
             style={{ whiteSpace: "nowrap", gap: 8, display: "flex", alignItems: "center" }}>
             {busy ? <ArrowsClockwise size={14} weight="bold" className="animate-spin" /> : <FlowArrow size={14} weight="bold" />}
-            {busy ? "Runningâ€¦" : "Run Backtest"}
+            {busy ? "Running..." : "Run Backtest"}
           </button>
           <button className="btn" disabled={sectorBusy} onClick={runSectorAnalysis} data-testid="bt-sector-btn"
             style={{ whiteSpace: "nowrap", gap: 8, display: "flex", alignItems: "center", background: "var(--surface)", border: "1px solid var(--border)" }}>

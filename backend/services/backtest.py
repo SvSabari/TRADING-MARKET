@@ -489,18 +489,24 @@ def _close_position(state: SimState, fill: float, ts: str, reason: str = "", fin
                 ts_dt_utc = ts
             # Try exact strike first, then any strike for the same opt_type
             symbol_for_close = state.trades_log[-1].get("symbol", "NIFTY") if state.trades_log else "NIFTY"
-            opt_doc = sync_db.option_candles.find_one({
+            query_exact = {
                 "symbol": symbol_for_close,
                 "strike": float(state.opt_strike),
                 "opt_type": state.opt_type,
                 "ts": {"$gte": ts_dt_utc}
-            }, sort=[("ts", 1)])
+            }
+            if getattr(state, "opt_expiry", None):
+                query_exact["expiry"] = state.opt_expiry
+                
+            opt_doc = sync_db.option_candles.find_one(query_exact, sort=[("ts", 1)])
+            
             if not opt_doc or (opt_doc["ts"] - ts_dt_utc).total_seconds() > 1800:
-                opt_doc = sync_db.option_candles.find_one({
+                query_fallback = {
                     "symbol": symbol_for_close,
                     "opt_type": state.opt_type,
                     "ts": {"$gte": ts_dt_utc}
-                }, sort=[("ts", 1)])
+                }
+                opt_doc = sync_db.option_candles.find_one(query_fallback, sort=[("ts", 1)])
             
             if opt_doc and (opt_doc["ts"] - ts_dt_utc).total_seconds() <= 1800:
                 exit_premium = float(opt_doc["ltp"])
@@ -582,7 +588,7 @@ def _open_position(state: SimState, symbol: str, side: int, fill: float, ts_str:
                 "ts": {"$gte": ts_utc}
             }, sort=[("ts", 1)])
             if doc and (doc["ts"] - ts_utc).total_seconds() <= window_seconds:
-                return float(doc["ltp"])
+                return float(doc["ltp"]), float(doc["strike"]), doc.get("expiry")
             # No exact strike match – try any available strike nearby to get a realistic premium
             doc2 = sync_db.option_candles.find_one({
                 "symbol": sym,
@@ -590,10 +596,10 @@ def _open_position(state: SimState, symbol: str, side: int, fill: float, ts_str:
                 "ts": {"$gte": ts_utc}
             }, sort=[("ts", 1)])
             if doc2 and (doc2["ts"] - ts_utc).total_seconds() <= window_seconds:
-                return float(doc2["ltp"])
-            return None
+                return float(doc2["ltp"]), float(doc2["strike"]), doc2.get("expiry")
+            return None, strike, None
 
-        entry_premium = _fetch_opt_premium(symbol.upper(), rounded_strike, opt_type, ts_dt_utc)
+        entry_premium, actual_strike, actual_expiry = _fetch_opt_premium(symbol.upper(), rounded_strike, opt_type, ts_dt_utc)
         if entry_premium is None or entry_premium <= 0:
             # No real data at all – use Black-Scholes-like approximation: ATM premium ≈ 0.4% of index
             entry_premium = round(fill * 0.004, 2)
@@ -601,8 +607,9 @@ def _open_position(state: SimState, symbol: str, side: int, fill: float, ts_str:
         
         state.is_index = True
         state.index_entry = fill
-        state.opt_strike = rounded_strike
+        state.opt_strike = actual_strike
         state.opt_type = opt_type
+        state.opt_expiry = actual_expiry
         state.opt_entry_premium = entry_premium
         
         if fixed_qty and int(fixed_qty) > 0:
