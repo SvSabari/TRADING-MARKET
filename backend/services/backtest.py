@@ -471,39 +471,42 @@ def _mark_to_market(state: SimState, bar_close: float) -> float:
         return state.equity + (bar_close - state.entry_price) * state.qty * state.position
 
 
-def _close_position(state: SimState, fill: float, ts: str, reason: str = "", final: bool = False) -> None:
+def _close_position(state: SimState, fill: float, ts: str, reason: str = "", final: bool = False, exact_premium: float = None) -> None:
     """Close any open position at `fill`. Updates equity, wins, trades, log."""
     if state.position == 0:
         return
         
     if getattr(state, 'is_index', False):
-        from db import sync_db
-        import datetime
-        try:
-            ts_dt = datetime.datetime.fromisoformat(ts.replace("Z", "+00:00")).replace(tzinfo=None)
-            ts_dt_utc = ts_dt - datetime.timedelta(hours=5, minutes=30)
-        except:
-            ts_dt_utc = ts
-        # Try exact strike first, then any strike for the same opt_type
-        symbol_for_close = state.trades_log[-1].get("symbol", "NIFTY") if state.trades_log else "NIFTY"
-        opt_doc = sync_db.option_candles.find_one({
-            "symbol": symbol_for_close,
-            "strike": float(state.opt_strike),
-            "opt_type": state.opt_type,
-            "ts": {"$gte": ts_dt_utc}
-        }, sort=[("ts", 1)])
-        if not opt_doc or (opt_doc["ts"] - ts_dt_utc).total_seconds() > 1800:
+        if exact_premium is not None:
+            exit_premium = exact_premium
+        else:
+            from db import sync_db
+            import datetime
+            try:
+                ts_dt = datetime.datetime.fromisoformat(ts.replace("Z", "+00:00")).replace(tzinfo=None)
+                ts_dt_utc = ts_dt - datetime.timedelta(hours=5, minutes=30)
+            except:
+                ts_dt_utc = ts
+            # Try exact strike first, then any strike for the same opt_type
+            symbol_for_close = state.trades_log[-1].get("symbol", "NIFTY") if state.trades_log else "NIFTY"
             opt_doc = sync_db.option_candles.find_one({
                 "symbol": symbol_for_close,
+                "strike": float(state.opt_strike),
                 "opt_type": state.opt_type,
                 "ts": {"$gte": ts_dt_utc}
             }, sort=[("ts", 1)])
-        
-        if opt_doc and (opt_doc["ts"] - ts_dt_utc).total_seconds() <= 1800:
-            exit_premium = float(opt_doc["ltp"])
-        else:
-            exit_points = (fill - state.index_entry) * state.position
-            exit_premium = max(0.05, state.opt_entry_premium + exit_points * 0.5)
+            if not opt_doc or (opt_doc["ts"] - ts_dt_utc).total_seconds() > 1800:
+                opt_doc = sync_db.option_candles.find_one({
+                    "symbol": symbol_for_close,
+                    "opt_type": state.opt_type,
+                    "ts": {"$gte": ts_dt_utc}
+                }, sort=[("ts", 1)])
+            
+            if opt_doc and (opt_doc["ts"] - ts_dt_utc).total_seconds() <= 1800:
+                exit_premium = float(opt_doc["ltp"])
+            else:
+                exit_points = (fill - state.index_entry) * state.position
+                exit_premium = max(0.05, state.opt_entry_premium + exit_points * 0.5)
         pnl = (exit_premium - state.opt_entry_premium) * state.qty * state.position
         
         entry = {
@@ -639,6 +642,8 @@ def _simulate(symbol: str, df: pd.DataFrame, signals: pd.Series, params: Dict = 
     sig_vals = signals.values
     close_vals = df["close"].values
     open_vals = df["open"].values
+    high_vals = df["high"].values
+    low_vals = df["low"].values
     ts_vals = df["ts"].astype(str).values
     
     n = len(df)
@@ -654,29 +659,76 @@ def _simulate(symbol: str, df: pd.DataFrame, signals: pd.Series, params: Dict = 
         # Check Stop-Loss / Take-Profit / Intraday Square-off
         if state.position != 0:
             is_eod = any(t in ts_vals[i] for t in square_off_times)
+            bar_high = float(high_vals[i])
+            bar_low = float(low_vals[i])
             
             reason = None
-            if is_index:
-                # ESTIMATE option premium for SL/TP check to prevent making 1000s of slow DB queries in this loop.
-                # The REAL exit premium will be accurately fetched from the DB inside _close_position when the trade actually closes.
-                points_gained = (bar_close - state.index_entry) * state.position
-                current_premium = max(0.05, state.opt_entry_premium + points_gained * 0.5)
-                    
-                pnl_pct = ((current_premium - state.opt_entry_premium) / state.opt_entry_premium) * state.position
-            else:
-                pnl_pct = (bar_close - state.entry_price) / state.entry_price * state.position
+            exact_exit = None
             
-            if pnl_pct <= -sl_pct:
-                reason = "SL"
-            elif pnl_pct >= tp_pct:
-                reason = "Target"
-            elif is_eod:
-                reason = "EOD"
+            if is_index:
+                # Calculate the EXACT exit premium price for Target and SL
+                target_price = state.opt_entry_premium * (1 + tp_pct) if state.position == 1 else state.opt_entry_premium * (1 - tp_pct)
+                sl_price = state.opt_entry_premium * (1 - sl_pct) if state.position == 1 else state.opt_entry_premium * (1 + sl_pct)
+                
+                # Estimate the option's intra-candle high and low using delta 0.5 approximation
+                if state.opt_type == "CE":
+                    est_opt_high = state.opt_entry_premium + (bar_high - state.index_entry) * 0.5
+                    est_opt_low = state.opt_entry_premium + (bar_low - state.index_entry) * 0.5
+                else:
+                    est_opt_high = state.opt_entry_premium + (state.index_entry - bar_low) * 0.5
+                    est_opt_low = state.opt_entry_premium + (state.index_entry - bar_high) * 0.5
+                    
+                hit_target = False
+                hit_sl = False
+                
+                if state.position == 1: # BUY
+                    if est_opt_high >= target_price: hit_target = True
+                    if est_opt_low <= sl_price: hit_sl = True
+                else: # SELL
+                    if est_opt_low <= target_price: hit_target = True
+                    if est_opt_high >= sl_price: hit_sl = True
+                    
+                if hit_sl and hit_target:
+                    reason = "SL"
+                    exact_exit = round(sl_price, 2)
+                elif hit_sl:
+                    reason = "SL"
+                    exact_exit = round(sl_price, 2)
+                elif hit_target:
+                    reason = "Target"
+                    exact_exit = round(target_price, 2)
+                elif is_eod:
+                    reason = "EOD"
+            else:
+                target_price = state.entry_price * (1 + tp_pct) if state.position == 1 else state.entry_price * (1 - tp_pct)
+                sl_price = state.entry_price * (1 - sl_pct) if state.position == 1 else state.entry_price * (1 + sl_pct)
+                
+                hit_target = False
+                hit_sl = False
+                
+                if state.position == 1:
+                    if bar_high >= target_price: hit_target = True
+                    if bar_low <= sl_price: hit_sl = True
+                else:
+                    if bar_low <= target_price: hit_target = True
+                    if bar_high >= sl_price: hit_sl = True
+                    
+                if hit_sl and hit_target:
+                    reason = "SL"
+                    exact_exit = round(sl_price, 2)
+                elif hit_sl:
+                    reason = "SL"
+                    exact_exit = round(sl_price, 2)
+                elif hit_target:
+                    reason = "Target"
+                    exact_exit = round(target_price, 2)
+                elif is_eod:
+                    reason = "EOD"
                 
             if reason:
                 fill = float(open_vals[i + 1])
                 if not math.isnan(fill):
-                    _close_position(state, fill, ts_vals[i + 1], reason=reason)
+                    _close_position(state, fill, ts_vals[i + 1], reason=reason, exact_premium=exact_exit)
                 continue
 
         if sig == 0 or sig == state.position:
