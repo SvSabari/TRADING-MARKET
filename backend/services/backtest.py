@@ -501,6 +501,10 @@ def _close_position(state: SimState, fill: float, ts: str, reason: str = "", fin
             opt_doc = sync_db.option_candles.find_one(query_exact, sort=[("ts", 1)])
             
             if not opt_doc or (opt_doc["ts"] - ts_dt_utc).total_seconds() > 1800:
+                if opt_doc:
+                    print(f"[EXIT] EXACT too far: {symbol_for_close} {state.opt_strike} {state.opt_type} gap={(opt_doc['ts']-ts_dt_utc).total_seconds():.0f}s — trying fallback")
+                else:
+                    print(f"[EXIT] EXACT not found: {symbol_for_close} {state.opt_strike} {state.opt_type} expiry={getattr(state,'opt_expiry',None)} req_ts={ts_dt_utc}")
                 query_fallback = {
                     "symbol": symbol_for_close,
                     "opt_type": state.opt_type,
@@ -510,9 +514,11 @@ def _close_position(state: SimState, fill: float, ts: str, reason: str = "", fin
             
             if opt_doc and (opt_doc["ts"] - ts_dt_utc).total_seconds() <= 1800:
                 exit_premium = float(opt_doc["ltp"])
+                print(f"[EXIT] MATCHED: {symbol_for_close} strike={opt_doc['strike']} {state.opt_type} ts={opt_doc['ts']} expiry={opt_doc.get('expiry')} ltp=₹{opt_doc['ltp']}")
             else:
                 exit_points = (fill - state.index_entry) * state.position
                 exit_premium = max(0.05, state.opt_entry_premium + exit_points * 0.5)
+                print(f"[EXIT] SIMULATED: No DB match within 30min for {symbol_for_close} {state.opt_strike} {state.opt_type} req_ts={ts_dt_utc} — estimated ₹{exit_premium:.2f}")
         pnl = (exit_premium - state.opt_entry_premium) * state.qty * state.position
         
         entry = {
@@ -588,6 +594,7 @@ def _open_position(state: SimState, symbol: str, side: int, fill: float, ts_str:
                 "ts": {"$gte": ts_utc}
             }, sort=[("ts", 1)])
             if doc and (doc["ts"] - ts_utc).total_seconds() <= window_seconds:
+                print(f"[ENTRY] EXACT MATCH: {sym} {strike} {otype} req_ts={ts_utc} -> found ts={doc['ts']} expiry={doc.get('expiry')} ltp=₹{doc['ltp']}")
                 return float(doc["ltp"]), float(doc["strike"]), doc.get("expiry")
             # No exact strike match – try any available strike nearby to get a realistic premium
             doc2 = sync_db.option_candles.find_one({
@@ -596,13 +603,17 @@ def _open_position(state: SimState, symbol: str, side: int, fill: float, ts_str:
                 "ts": {"$gte": ts_utc}
             }, sort=[("ts", 1)])
             if doc2 and (doc2["ts"] - ts_utc).total_seconds() <= window_seconds:
+                print(f"[ENTRY] FALLBACK STRIKE: {sym} req_strike={strike} {otype} req_ts={ts_utc} -> found strike={doc2['strike']} ts={doc2['ts']} expiry={doc2.get('expiry')} ltp=₹{doc2['ltp']}")
                 return float(doc2["ltp"]), float(doc2["strike"]), doc2.get("expiry")
+            
+            print(f"[ENTRY] NO DATA: {sym} {strike} {otype} req_ts={ts_utc} within {window_seconds}s window")
             return None, strike, None
 
         entry_premium, actual_strike, actual_expiry = _fetch_opt_premium(symbol.upper(), rounded_strike, opt_type, ts_dt_utc)
         if entry_premium is None or entry_premium <= 0:
             # No real data at all – use Black-Scholes-like approximation: ATM premium ≈ 0.4% of index
             entry_premium = round(fill * 0.004, 2)
+            print(f"[ENTRY] SIMULATED: Used 0.4% baseline ₹{entry_premium} for {symbol.upper()} {rounded_strike} {opt_type}")
 
         
         state.is_index = True
