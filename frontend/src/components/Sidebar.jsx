@@ -2,7 +2,7 @@ import { NavLink } from "react-router-dom";
 import { useAuth } from "@/lib/auth-context";
 import { useEffect, useState } from "react";
 import {
-  ChartBar, Lightning, Strategy, ChartLine, Wallet, Receipt, TestTube,
+  ChartBar, Lightning, Strategy, ChartLine, Wallet, Receipt, TestTube, Bank,
   Database, Robot, Plugs, Gear, Pulse, Crosshair, Users, SquaresFour
 } from "@phosphor-icons/react";
 import { getMarketStatus } from "@/lib/marketHours";
@@ -40,15 +40,15 @@ export default function Sidebar() {
 
   return (
     <div data-testid="sidebar" className="flex flex-col h-full">
-      <NavLink to="/profile" className="px-4 py-4 border-b flex items-center gap-2 hover:bg-gray-50/5 cursor-pointer transition-colors" style={{ textDecoration: 'none' }}>
-        <div className="w-8 h-8 rounded-full flex items-center justify-center shadow-sm" style={{ backgroundColor: 'var(--brand)', color: '#fff', fontFamily: "Outfit", fontWeight: 700, fontSize: 16 }}>
+      <NavLink to="/profile" className="px-4 py-2 border-b border-white/10 flex items-center gap-2 hover:bg-white/5 cursor-pointer transition-colors" style={{ textDecoration: 'none' }}>
+        <div className="w-8 h-8 rounded-full flex items-center justify-center shadow-sm" style={{ backgroundColor: '#ffffff', color: '#006B54', fontFamily: "Outfit", fontWeight: 700, fontSize: 16 }}>
           {user?.name ? user.name.charAt(0).toUpperCase() : 'T'}
         </div>
         <div>
-          <div className="truncate max-w-[150px]" style={{ fontFamily: "Outfit", fontWeight: 700, fontSize: 15, letterSpacing: "-0.01em", color: 'var(--text-primary)' }}>
+          <div className="truncate max-w-[150px]" style={{ fontFamily: "Outfit", fontWeight: 700, fontSize: 15, letterSpacing: "-0.01em", color: '#ffffff' }}>
             {user?.name?.toUpperCase() || 'TRADE'}
           </div>
-          <div className="text-[10px] uppercase tracking-widest mono" style={{ color: 'var(--brand)' }}>Profile & Funds</div>
+          <div className="text-[10px] uppercase tracking-widest mono text-white">Profile & Funds</div>
         </div>
       </NavLink>
       <nav className="flex-1 py-2 overflow-y-auto custom-scrollbar">
@@ -65,9 +65,9 @@ export default function Sidebar() {
           </NavLink>
         ))}
       </nav>
-      <div className="px-4 py-3 border-t">
-        <div className="dim text-[10px] uppercase tracking-widest mono mb-1">market</div>
-        <div className="flex items-center gap-2 text-xs mono" style={{ color: mktStatus.open ? undefined : mktStatus.color }}>
+      <div className="px-4 py-2 border-t border-white/10">
+        <div className="text-white text-[10px] uppercase tracking-widest mono mb-1">market</div>
+        <div className="flex items-center gap-2 text-xs mono" style={{ color: "white" }}>
           <span className="dot" style={{ background: mktStatus.color }}></span>
           <span>NSE · {mktStatus.label}</span>
         </div>

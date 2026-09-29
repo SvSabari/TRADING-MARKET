@@ -6,20 +6,20 @@ export default function ChainTable({ chain, strategyMode = false, onAddLeg }) {
       <table className="w-full text-xs">
         <thead>
           <tr className="dim text-[10px] uppercase tracking-widest border-b border-[#222]">
-            <th className="text-right py-2 px-3" colSpan={4}>CALLS</th>
-            <th className="text-center py-2 px-3">STRIKE</th>
-            <th className="text-left py-2 px-3" colSpan={4}>PUTS</th>
+            <th className="!text-center py-2 px-3" colSpan={4}>CALLS</th>
+            <th className="!text-center py-2 px-3">STRIKE</th>
+            <th className="!text-center py-2 px-3" colSpan={4}>PUTS</th>
           </tr>
           <tr className="dim text-[10px] uppercase tracking-widest border-b border-[#222]">
-            <th className="text-right py-2 px-3">OI</th>
-            <th className="text-right py-2 px-3">CHNG OI</th>
-            <th className="text-right py-2 px-3">TREND</th>
-            <th className="text-right py-2 px-3">LTP</th>
-            <th className="text-center py-2 px-3">—</th>
-            <th className="text-left py-2 px-3">LTP</th>
-            <th className="text-left py-2 px-3">TREND</th>
-            <th className="text-left py-2 px-3">CHNG OI</th>
-            <th className="text-left py-2 px-3">OI</th>
+            <th className="!text-right py-2 px-3">OI</th>
+            <th className="!text-right py-2 px-3">CHNG OI</th>
+            <th className="!text-right py-2 px-3">TREND</th>
+            <th className="!text-right py-2 px-3">LTP</th>
+            <th className="!text-center py-2 px-3">—</th>
+            <th className="!text-left py-2 px-3">LTP</th>
+            <th className="!text-left py-2 px-3">TREND</th>
+            <th className="!text-left py-2 px-3">CHNG OI</th>
+            <th className="!text-left py-2 px-3">OI</th>
           </tr>
         </thead>
         <tbody className="cell-divider">
@@ -39,8 +39,8 @@ export default function ChainTable({ chain, strategyMode = false, onAddLeg }) {
             };
             return (
               <tr key={r.strike} className={atm ? "bg-gray-200" : ""} data-testid={`oc-row-${r.strike}`}>
-                <td className="py-2 px-3 text-right num dim">{fmtInt(r.ce_oi)}</td>
-                <td className="py-2 px-3 text-right">
+                <td className="py-2 px-3 !text-right num dim">{fmtInt(r.ce_oi)}</td>
+                <td className="py-2 px-3 !text-right">
                   <div className="num">{r.ce_change_oi > 0 ? "+" : ""}{fmtInt(r.ce_change_oi)}</div>
                   {r.ce_oi - r.ce_change_oi > 0 && (
                     <div className={`text-[10px] mt-0.5 ${r.ce_change_oi > 0 ? "buy" : r.ce_change_oi < 0 ? "sell" : "dim"}`}>
@@ -49,7 +49,7 @@ export default function ChainTable({ chain, strategyMode = false, onAddLeg }) {
                   )}
                 </td>
                 <td className={`py-2 px-3 text-right text-[10px] uppercase tracking-wider ${trendColor(r.ce_trend)}`}>{formatTrend(r.ce_trend)}</td>
-                <td className="py-2 px-3 text-right num group relative">
+                <td className="py-2 px-3 !text-right num group relative">
                   <span className={strategyMode ? "group-hover:opacity-0" : ""}>{fmtNum(r.ce_ltp)}</span>
                   {strategyMode && (
                     <div className="absolute inset-0 flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 pr-2">
@@ -59,7 +59,7 @@ export default function ChainTable({ chain, strategyMode = false, onAddLeg }) {
                   )}
                 </td>
                 <td className={`py-2 px-3 text-center num ${atm ? "buy" : ""}`}>{r.strike}</td>
-                <td className="py-2 px-3 text-left num group relative">
+                <td className="py-2 px-3 !text-left num group relative">
                   <span className={strategyMode ? "group-hover:opacity-0" : ""}>{fmtNum(r.pe_ltp)}</span>
                   {strategyMode && (
                     <div className="absolute inset-0 flex items-center justify-start gap-1 opacity-0 group-hover:opacity-100 pl-2">
@@ -69,7 +69,7 @@ export default function ChainTable({ chain, strategyMode = false, onAddLeg }) {
                   )}
                 </td>
                 <td className={`py-2 px-3 text-left text-[10px] uppercase tracking-wider ${trendColor(r.pe_trend)}`}>{formatTrend(r.pe_trend)}</td>
-                <td className="py-2 px-3 text-left">
+                <td className="py-2 px-3 !text-left">
                   <div className="num">{r.pe_change_oi > 0 ? "+" : ""}{fmtInt(r.pe_change_oi)}</div>
                   {r.pe_oi - r.pe_change_oi > 0 && (
                     <div className={`text-[10px] mt-0.5 ${r.pe_change_oi > 0 ? "buy" : r.pe_change_oi < 0 ? "sell" : "dim"}`}>
@@ -77,7 +77,7 @@ export default function ChainTable({ chain, strategyMode = false, onAddLeg }) {
                     </div>
                   )}
                 </td>
-                <td className="py-2 px-3 text-left num dim">{fmtInt(r.pe_oi)}</td>
+                <td className="py-2 px-3 !text-left num dim">{fmtInt(r.pe_oi)}</td>
               </tr>
             );
           })}

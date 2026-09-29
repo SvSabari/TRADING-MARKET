@@ -1,1 +1,1 @@
-Aliceblue chain returning None: spot is 0.0
+Aliceblue chain returning None: df empty after Instrument Type filter

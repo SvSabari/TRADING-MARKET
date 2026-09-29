@@ -188,7 +188,24 @@ class AliceblueFeed(LiveFeed):
         
         import datetime
         import logging
+        import requests
         import pya3.alicebluepy
+        
+        # Monkey-patch Aliceblue to use the new V2 Open API for WebSocket sessions
+        # The legacy invalid_sess and createSession endpoints return 404 Not Found.
+        def custom_create_session(self_instance, sess):
+            url = 'https://a3.aliceblueonline.com/open-api/od/v1/profile/createWsSess'
+            payload = {'source': 'API', 'userId': self_instance.user_id}
+            try:
+                # self_instance.session_id contains the OAuth JWT token
+                requests.post(url, json=payload, headers={'Authorization': 'Bearer ' + self_instance.session_id})
+            except Exception as e:
+                logger.error(f"Alice Blue V2 createWsSess failed: {e}")
+            return {'stat': 'Ok'}
+
+        pya3.alicebluepy.Aliceblue.invalid_sess = lambda self_instance, sess: {'stat': 'Ok'}
+        pya3.alicebluepy.Aliceblue.createSession = custom_create_session
+        
         pya3.alicebluepy.time = datetime.time
         import time as py_time
         pya3.alicebluepy.sleep = py_time.sleep

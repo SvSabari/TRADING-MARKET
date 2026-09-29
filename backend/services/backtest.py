@@ -477,8 +477,11 @@ def _close_position(state: SimState, fill: float, ts: str, reason: str = "", fin
         return
         
     if getattr(state, 'is_index', False):
+        exit_source_label = "SIMULATED"
         if exact_premium is not None:
             exit_premium = exact_premium
+            pnl = (exit_premium - state.opt_entry_premium) * state.qty * state.position
+            exit_source_label = "REAL_EXACT" # SL/Target hit based on entry source
         else:
             from db import sync_db
             import datetime

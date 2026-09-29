@@ -18,6 +18,21 @@ export default function QuickOrderPanel({ watchlist = [] }) {
   const [instrumentType, setInstrumentType] = useState("stock");
   const [symbol, setSymbol] = useState("");
   const [side, setSide] = useState("BUY");
+  useEffect(() => {
+    const handleOpenOrder = (e) => {
+      if (e.detail.symbol) {
+        setSymbol(e.detail.symbol);
+      }
+      if (e.detail.side) {
+        setSide(e.detail.side);
+      }
+      // Give a little visual feedback in the panel itself
+      toast.success(`Ready to ${e.detail.side} ${e.detail.symbol}`);
+    };
+    window.addEventListener("open-order-panel", handleOpenOrder);
+    return () => window.removeEventListener("open-order-panel", handleOpenOrder);
+  }, []);
+
   const [quantity, setQuantity] = useState(1);
   const [price, setPrice] = useState("");
   const [selectedIndex, setSelectedIndex] = useState("NIFTY");
@@ -161,7 +176,7 @@ export default function QuickOrderPanel({ watchlist = [] }) {
         side,
         qty: parseInt(quantity),
         price: parseFloat(price),
-        symbol: finalSymbol,
+        symbol: finalSymbol, broker: "aliceblue", order_type: price ? "LIMIT" : "MARKET", product: "MIS",
         copy_to_users: copyToUsers
       };
 

@@ -87,66 +87,23 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen flex" style={{ background: "var(--bg)", color: "var(--text-primary)" }}>
-      {/* Hero Left Section — Light Modern Aesthetic */}
-      <div className="hidden lg:flex flex-1 relative overflow-hidden" style={{ background: "#F4EFEA", borderRight: "1px solid var(--border)" }}>
-        <img src={HERO_BG} alt="" className="absolute inset-0 w-full h-full object-cover opacity-20" />
-        <div className="absolute inset-0" style={{ background: "linear-gradient(135deg, rgba(253,251,247,0.92) 0%, rgba(244,239,234,0.75) 100%)" }} />
-        
-        <div className="relative z-10 p-12 flex flex-col justify-between w-full">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg flex items-center justify-center shadow-sm" style={{ background: "var(--brand)", color: "#FFF", fontFamily: "Outfit", fontWeight: 800, fontSize: 20 }}>T</div>
-            <div>
-              <div style={{ fontFamily: "Outfit", fontWeight: 800, fontSize: 20, letterSpacing: "-0.02em", color: "var(--text-primary)" }}>TRADE</div>
-              <div className="text-[10px] uppercase tracking-widest mono font-bold" style={{ color: "var(--brand)" }}>TRADERS PRO</div>
-            </div>
-          </div>
-
-          <div className="max-w-xl my-auto py-8">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold mono mb-6" style={{ background: "rgba(194,163,129,0.15)", color: "var(--text-primary)", border: "1px solid var(--border)" }}>
-              <ShieldCheck size={14} weight="fill" style={{ color: "var(--buy)" }} />
-              INSTITUTIONAL GRADE EXECUTION
-            </div>
-            
-            <h1 style={{ fontFamily: "Outfit", fontWeight: 800, fontSize: "clamp(36px, 4.5vw, 56px)", lineHeight: 1.05, letterSpacing: "-0.03em", color: "var(--text-primary)" }}>
-              Smart Algorithmic<br/>Execution For<br/><span style={{ color: "var(--buy)" }}>Modern Traders.</span>
-            </h1>
-
-            <p className="mt-6 text-sm leading-relaxed max-w-md" style={{ color: "var(--text-secondary)", fontFamily: "Outfit" }}>
-              TradingView webhook integration · Sub-second multi-broker order routing · Parquet tick analytics · Automated sub-account mirroring.
-            </p>
-
-            <div className="mt-10 grid grid-cols-3 gap-4 max-w-md">
-              {[
-                ["56", "SYMBOLS"],
-                ["5s", "TICK CAPTURE"],
-                ["100%", "DATA REALTIME"],
-              ].map(([n, l]) => (
-                <div key={l} className="p-4 rounded-lg shadow-sm" style={{ background: "var(--surface)", border: "1px solid var(--border)" }}>
-                  <div className="num text-2xl font-bold" style={{ color: "var(--buy)" }}>{n}</div>
-                  <div className="dim text-[10px] mono tracking-widest uppercase mt-1 font-semibold">{l}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="dim text-xs mono tracking-widest uppercase">
-            © TRADE TERMINAL · LIVE BROKER CONNECTED
-          </div>
-        </div>
-      </div>
-
+    <div className="min-h-screen flex flex-col items-center justify-center p-4" style={{ background: "var(--bg)", color: "var(--text-primary)" }}>
       {/* Login Right Section — Light Theme Card */}
-      <div className="flex-1 flex items-center justify-center p-8" style={{ background: "var(--surface)" }} data-testid="login-page">
-        <div className="w-full max-w-sm">
-          <div className="lg:hidden mb-8 flex items-center gap-2">
+      <div className="w-full max-w-md p-8 sm:p-10 rounded-2xl shadow-xl border relative" style={{ background: "var(--surface)", borderColor: "var(--border)" }} data-testid="login-page">
+        <div className="w-full">
+          <div className="mb-10 flex flex-col items-center justify-center gap-3">
+            <div className="w-12 h-12 rounded-xl flex items-center justify-center shadow-md" style={{ background: "var(--brand)", color: "#FFF", fontFamily: "Outfit", fontWeight: 800, fontSize: 24 }}>T</div>
+            <div className="text-center">
+              <div style={{ fontFamily: "Outfit", fontWeight: 800, fontSize: 22, letterSpacing: "-0.02em" }}>TRADE<span style={{color: "var(--brand)"}}>RS PRO</span></div>
+              <div className="dim text-[10px] mono uppercase tracking-widest mt-1 font-semibold">Terminal Access</div>
+            </div>
+          </div>
+          <div className="hidden">
             <div className="w-8 h-8 rounded-md flex items-center justify-center" style={{ background: "var(--brand)", color: "#FFF", fontFamily: "Outfit", fontWeight: 800 }}>T</div>
             <div style={{ fontFamily: "Outfit", fontWeight: 800, fontSize: 18 }}>TRADE</div>
           </div>
 
-          <div className="dim text-[10px] mono uppercase tracking-widest mb-1 font-semibold">→ Portal Access</div>
-          <h2 style={{ fontFamily: "Outfit", fontWeight: 800, fontSize: 32, letterSpacing: "-0.02em", color: "var(--text-primary)" }}>Sign in.</h2>
-          <p className="dim text-xs mt-1">Select your account type to proceed.</p>
+          <div className="text-center mb-8"><h2 style={{ fontFamily: "Outfit", fontWeight: 800, fontSize: 28, letterSpacing: "-0.02em", color: "var(--text-primary)" }}>Sign in</h2><p className="dim text-xs mt-1">Select your account type to proceed</p></div>
 
           {/* Login Type Switcher Tabs */}
           <div className="mt-6 flex rounded-lg p-1" style={{ background: "var(--bg)", border: "1px solid var(--border)" }}>

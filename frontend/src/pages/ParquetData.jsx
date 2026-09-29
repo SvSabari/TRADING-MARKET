@@ -10,6 +10,8 @@ export default function ParquetData() {
   const [stats, setStats] = useState(null);
   const [files, setFiles] = useState([]);
   const [preview, setPreview] = useState(null);
+  const [showCheckout, setShowCheckout] = useState(false);
+  const [isPro, setIsPro] = useState(false);
 
   const load = async () => {
     const [a, b] = await Promise.all([api.get("/parquet/status"), api.get("/parquet/files")]);
@@ -50,9 +52,63 @@ export default function ParquetData() {
   const totalRows = files.reduce((a, f) => a + (f.row_count || 0), 0);
   const totalBytes = files.reduce((a, f) => a + (f.size_bytes || 0), 0);
 
-  return (
-    <div className="space-y-4" data-testid="parquet-page">
-      <div className="flex items-center justify-between">
+      return (
+    <div className="relative space-y-4" data-testid="parquet-page">
+      {!isPro && (
+        <div className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-[var(--bg)]/80 backdrop-blur-sm rounded-lg border border-[var(--border)] mt-12 p-8 text-center h-[400px]">
+          <div className="bg-yellow-500 text-black text-xs font-bold px-3 py-1 rounded-full uppercase tracking-widest mb-4">Paid Feature</div>
+          <h2 className="text-2xl font-bold mb-2">High-Frequency Parquet Data</h2>
+          <p className="text-[var(--text-secondary)] max-w-md mb-6">Upgrade to a premium plan to access raw 5-second tick-level Parquet datasets for advanced quantitative research.</p>
+          <button className="bg-[var(--brand)] text-white px-6 py-2 rounded font-bold uppercase tracking-widest text-xs hover:bg-opacity-90 transition-opacity" onClick={() => {
+            toast.info("Redirecting to Razorpay secure checkout...");
+            setTimeout(() => setShowCheckout(true), 800);
+          }}>Upgrade to Pro</button>
+        </div>
+      )}
+      
+      {showCheckout && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="bg-white rounded-lg shadow-2xl w-[400px] overflow-hidden flex flex-col" style={{ fontFamily: 'sans-serif' }}>
+             <div className="bg-[#02042b] text-white p-6 flex flex-col items-center">
+               <div className="w-12 h-12 bg-white rounded flex items-center justify-center mb-4">
+                 <span className="text-[#02042b] font-bold text-xl">₹</span>
+               </div>
+               <h3 className="text-lg font-medium opacity-90">Traders Pro - Premium</h3>
+               <div className="text-3xl font-bold mt-2">₹ 499.00</div>
+             </div>
+             <div className="p-6 bg-gray-50 flex flex-col gap-4">
+                <div className="flex justify-between text-sm text-gray-600 border-b pb-2">
+                  <span>Parquet High-Frequency Data</span>
+                  <span className="font-bold text-gray-900">₹ 499</span>
+                </div>
+                <input type="text" placeholder="Card Number" className="w-full p-3 border rounded bg-white text-gray-800 outline-none" defaultValue="4111 1111 1111 1111" />
+                <div className="flex gap-2">
+                   <input type="text" placeholder="Expiry" className="w-1/2 p-3 border rounded bg-white text-gray-800 outline-none" defaultValue="12/28" />
+                   <input type="text" placeholder="CVV" className="w-1/2 p-3 border rounded bg-white text-gray-800 outline-none" defaultValue="123" />
+                </div>
+                <button 
+                  className="w-full bg-[#3399cc] hover:bg-[#2b83af] text-white font-bold py-3 rounded mt-2 transition-colors"
+                  onClick={() => {
+                    toast.success("Payment Successful! Premium features unlocked.");
+                    setIsPro(true);
+                    setShowCheckout(false);
+                  }}
+                >
+                  Pay ₹ 499.00
+                </button>
+                <button 
+                  className="w-full text-gray-400 text-xs mt-2 hover:text-gray-600"
+                  onClick={() => setShowCheckout(false)}
+                >
+                  Cancel Checkout
+                </button>
+             </div>
+          </div>
+        </div>
+      )}
+      
+      <div className={isPro ? "" : "opacity-30 pointer-events-none select-none"}>
+        <div className="flex items-center justify-between mb-4">
         <div>
           <h1 style={{ fontFamily: "Chivo", fontWeight: 900, fontSize: 28, letterSpacing: "-0.02em" }}>Parquet capture.</h1>
           <p className="dim text-sm mt-1">5-second OHLCV buckets per symbol, written to a date-partitioned folder.</p>
@@ -143,6 +199,7 @@ export default function ParquetData() {
         </div>
       </Panel>
 
+      </div>
     </div>
   );
 }

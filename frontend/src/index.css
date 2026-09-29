@@ -2,24 +2,24 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ---------- Premium Nude SaaS Terminal — global styles ---------- */
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
+/* ---------- Premium Nude SaaS Terminal - global styles ---------- */
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap&family=Montserrat:wght@800;900');
 
 :root {
-    --bg: #FDFBF7;
+    --bg: #F4F6F5;
     --surface: #FFFFFF;
-    --surface-hover: #FAF7F2;
-    --border: #E8E0D5;
-    --border-focus: #D4C5B9;
-    --text-primary: #3E3832;
-    --text-secondary: #7A726A;
-    --text-muted: #A39B93;
-    --buy: #2A9D8F;
+    --surface-hover: #EBF0EE;
+    --border: #DCE4E1;
+    --border-focus: #005440;
+    --text-primary: #111827;
+    --text-secondary: #4B5563;
+    --text-muted: #9CA3AF;
+    --buy: #005440;
     --sell: #E76F51;
     --warn: #E9C46A;
-    --brand: #C2A381;
-    --shadow-sm: 0 1px 2px rgba(62, 56, 50, 0.04);
-    --shadow-md: 0 4px 12px rgba(62, 56, 50, 0.05), 0 2px 4px rgba(62, 56, 50, 0.03);
+    --brand: #005440;
+    --shadow-sm: 0 1px 2px rgba(17, 24, 39, 0.04);
+    --shadow-md: 0 4px 12px rgba(17, 24, 39, 0.05), 0 2px 4px rgba(17, 24, 39, 0.03);
     --radius-md: 8px;
     --radius-sm: 6px;
 }
@@ -70,12 +70,12 @@
     .num { font-family: "JetBrains Mono", monospace; font-variant-numeric: tabular-nums; }
 
     /* selection */
-    ::selection { background: rgba(194, 163, 129, 0.3); }
+    ::selection { background: rgba(0, 84, 64, 0.3); }
 
     /* scrollbars */
-    *::-webkit-scrollbar { width: 8px; height: 8px; }
-    *::-webkit-scrollbar-thumb { background: var(--border-focus); border-radius: 0; }
-    *::-webkit-scrollbar-track { background: var(--bg); }
+    *::-webkit-scrollbar { width: 6px; height: 6px; }
+    *::-webkit-scrollbar-thumb { background: rgba(0, 84, 64, 0.4); border-radius: 10px; }
+    *::-webkit-scrollbar-track { background: transparent; }
 }
 
 /* ---------- utility classes ---------- */
@@ -134,8 +134,8 @@
     box-shadow: var(--shadow-md);
 }
 .btn:active { transform: translateY(0); box-shadow: var(--shadow-sm); }
-.btn-primary { background: var(--brand); color: #FFFFFF; border-color: var(--brand); box-shadow: 0 4px 12px rgba(194, 163, 129, 0.25); }
-.btn-primary:hover { background: #b09170; color: #FFFFFF; border-color: #b09170; }
+.btn-primary { background: var(--brand); color: #FFFFFF; border-color: var(--brand); box-shadow: 0 4px 12px rgba(0, 107, 84, 0.25); }
+.btn-primary:hover { background: #005342; color: #FFFFFF; border-color: #005342; }
 .btn-danger { background: transparent; color: var(--sell); border-color: var(--sell); }
 .btn-danger:hover { background: var(--sell); color: #FFFFFF; }
 .btn-ghost { background: transparent; border-color: transparent; box-shadow: none; }
@@ -192,3 +192,30 @@ input.terminal:focus, textarea.terminal:focus, select.terminal:focus, div.termin
         linear-gradient(90deg, var(--border) 1px, transparent 1px);
     background-size: 8px 8px;
 }
+*::-webkit-scrollbar-thumb:hover { background: rgba(0, 84, 64, 0.7); }
+
+/* Table Styles */
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+th {
+  padding: 0.75rem 1rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+}
+td {
+  padding: 0.75rem 1rem;
+  font-size: 0.875rem;
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border);
+}
+tr:hover td {
+  background: var(--surface-hover);
+}
+

@@ -15,32 +15,41 @@
 .app-shell.right-collapsed {
     grid-template-columns: 220px 1fr 0px;
 }
-.app-sidebar { grid-area: sidebar; border-right: 1px solid var(--border); background: var(--bg); overflow-y: auto; }
-.app-topbar  { grid-area: topbar; border-bottom: 1px solid var(--border); background: var(--bg); display:flex; align-items:center; padding: 0 16px; gap: 16px; }
-.app-ticker  { grid-area: ticker; overflow: hidden; }
-.app-main    { grid-area: main; position: relative; display: flex; flex-direction: column; overflow: hidden; background: var(--bg); }
-.app-right-sidebar { grid-area: right-sidebar; overflow: hidden; }
-.app-status  { grid-area: statusbar; border-top: 1px solid var(--border); background: var(--bg); display:flex; align-items:center; padding: 0 16px; gap: 16px; font-family: "JetBrains Mono", monospace; font-size: 11px; color: var(--text-muted); overflow-x: auto; white-space: nowrap; scrollbar-width: none; }
+.app-shell.left-collapsed {
+    grid-template-columns: 0px 1fr 320px;
+}
+.app-shell.left-collapsed.right-collapsed {
+    grid-template-columns: 0px 1fr 0px;
+}
+.app-sidebar { grid-area: sidebar; background: #005440; border-right: none; overflow-y: auto; overflow-x: hidden; transition: opacity 300ms; color: white; }
+.app-shell.left-collapsed .app-sidebar { opacity: 0; pointer-events: none; }
+.app-topbar  { grid-area: topbar; background: #005440; border-bottom: none; display:flex; align-items:center; padding: 0 16px; gap: 16px; color: white; }
+.app-ticker  { grid-area: ticker; overflow: hidden; background: var(--surface); }
+.app-main    { grid-area: main; position: relative; display: flex; flex-direction: column; overflow: hidden; background: #F3F5F4; }
+.app-right-sidebar { grid-area: right-sidebar; overflow: hidden; background: #F3F5F4; border-left: 1px solid var(--border); }
+.app-status  { grid-area: statusbar; border-top: 1px solid var(--border); background: var(--surface); display:flex; align-items:center; padding: 0 16px; gap: 16px; font-family: "JetBrains Mono", monospace; font-size: 11px; color: var(--text-muted); overflow-x: auto; white-space: nowrap; scrollbar-width: none; }
 .app-status::-webkit-scrollbar { display: none; }
 
 .sidebar-link {
     display: flex; align-items: center; gap: 10px;
-    padding: 10px 16px;
-    border-left: 2px solid transparent;
-    color: #888;
-    font-family: "Chivo", sans-serif;
+    padding: 8px 16px;
+    border-left: 3px solid transparent;
+    color: #FFFFFF;
+    font-family: "Outfit", sans-serif;
     font-size: 12px;
     font-weight: 600;
-    letter-spacing: 0.08em;
+    letter-spacing: 0.05em;
     text-transform: uppercase;
     cursor: pointer;
     transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+    margin: 2px 8px;
+    border-radius: 6px;
 }
-.sidebar-link:hover { background: var(--surface-hover); color: var(--text-primary); }
+.sidebar-link:hover { background: rgba(255, 255, 255, 0.1); color: #ffffff; }
 .sidebar-link.active { 
-    background: #EBE4DB; 
-    color: #000000; 
-    border-left-color: var(--brand); 
+    background: #FFFFFF; 
+    color: #005440; 
+    border-left-color: transparent; 
     font-weight: 700;
 }
 
@@ -86,3 +95,8 @@
     .app-sidebar { border-right: none; border-bottom: 1px solid var(--border); max-height: 220px; }
     .app-right-sidebar { display: none; }
 }
+
+.app-topbar .btn-ghost:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+

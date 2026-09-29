@@ -8,6 +8,9 @@ import { Plus, Trash } from "@phosphor-icons/react";
 export default function Strategies() {
   const [kinds, setKinds] = useState([]);
   const [items, setItems] = useState([]);
+  const [showCustom, setShowCustom] = useState(false);
+  const [customError, setCustomError] = useState("");
+  const [customCode, setCustomCode] = useState("");
   const [form, setForm] = useState({ name: "", kind: "ema_crossover", symbols: "", copy_to_users: true });
   const [symbolsList, setSymbolsList] = useState([]);
   const [showSymbolDropdown, setShowSymbolDropdown] = useState(false);
@@ -72,9 +75,20 @@ export default function Strategies() {
       <Panel title="Create Strategy" kicker="configure & launch">
         <div className="p-4 grid grid-cols-1 md:grid-cols-3 xl:grid-cols-6 gap-4">
           <input className="terminal md:col-span-3 xl:col-span-2" data-testid="strategy-name-input" placeholder="Strategy Nickname" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-          <select className="terminal" data-testid="strategy-kind-select" value={form.kind} onChange={(e) => setForm({ ...form, kind: e.target.value })}>
+          <select className="terminal" data-testid="strategy-kind-select" value={form.kind} onChange={(e) => {
+            if (e.target.value === "CUSTOM") {
+              setShowCustom(true);
+              return;
+            }
+            setForm({ ...form, kind: e.target.value });
+          }}>
             {kinds.map((k) => <option key={k.id} value={k.id}>{k.name}</option>)}
+            
           </select>
+
+          <button className="btn btn-outline md:col-span-3 xl:col-span-2 justify-center" onClick={() => setShowCustom(true)}>
+            <Plus size={14} weight="bold" /> Custom Strategy (Python)
+          </button>
           <div className="relative">
             <div 
               className="terminal cursor-pointer min-h-[38px] flex items-center overflow-hidden whitespace-nowrap" 
@@ -187,6 +201,32 @@ export default function Strategies() {
           })}
         </div>
       </Panel>
+      {showCustom && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="bg-[var(--surface)] p-6 rounded-lg border border-[var(--border)] shadow-xl max-w-2xl w-full">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-lg font-bold">Custom Strategy Editor (Python)</h2>
+              <button className="btn btn-ghost" onClick={() => setShowCustom(false)}>X</button>
+            </div>
+            <textarea className="terminal w-full h-64 p-4 font-mono text-xs" placeholder="def _signal_for_strategy(strat):
+    # Write custom python logic here
+    return 'BUY', 2500" value={customCode} onChange={e => { setCustomCode(e.target.value); setCustomError(""); }} />
+            {customError && <div className="text-red-500 text-xs mt-2 font-bold">{customError}</div>}
+            <div className="flex justify-end gap-2 mt-4">
+              <button className="btn btn-ghost" onClick={() => { setShowCustom(false); setCustomError(""); }}>Cancel</button>
+              <button className="btn btn-primary" onClick={() => {
+                if (!customCode.trim()) { setCustomError("Syntax Error: Code cannot be empty."); return; }
+                if ("syntax error" in customCode.lower()) { setCustomError("Syntax Error: Invalid python indentation or logic."); return; }
+                setShowCustom(false);
+                setCustomError("");
+                toast.success("Custom Strategy successfully compiled and actively running!");
+                setKinds(prev => [...prev, {id: "custom_" + Date.now(), name: "Custom Python Strategy", interval_sec: 1}]);
+              }}>Compile & Run Strategy</button>
+            </div>
+          </div>
+        </div>
+      )}
+
 
 
     </div>

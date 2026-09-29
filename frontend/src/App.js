@@ -13,6 +13,7 @@ import Strategies from "@/pages/Strategies";
 import OptionChain from "@/pages/OptionChain";
 import PremiumMatcherPage from "@/pages/PremiumMatcherPage";
 import Positions from "@/pages/Positions";
+import Transactions from "@/pages/Transactions";
 import Orders from "@/pages/Orders";
 import Backtest from "@/pages/Backtest";
 import ParquetData from "@/pages/ParquetData";
@@ -49,6 +50,7 @@ export default function App() {
           <Route path="/option-chain" element={wrap(OptionChain)} />
           <Route path="/premium-matcher" element={wrap(PremiumMatcherPage)} />
           <Route path="/positions" element={wrap(Positions)} />
+          <Route path="/transactions" element={wrap(Transactions)} />
           <Route path="/orders" element={wrap(Orders)} />
           <Route path="/backtest" element={wrap(Backtest)} />
           <Route path="/parquet" element={wrap(ParquetData)} />

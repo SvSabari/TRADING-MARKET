@@ -34,7 +34,7 @@ export default function AppShell({ children }) {
   if (!user || isManagedUser) return null;
 
   return (
-    <div className={`app-shell ${rightCollapsed ? 'right-collapsed' : ''}`}>
+    <div className={`app-shell ${rightCollapsed ? 'right-collapsed' : ''} ${window.leftCollapsed ? 'left-collapsed' : ''}`}>
       <aside className="app-sidebar"><Sidebar /></aside>
       <header className="app-topbar"><Topbar /></header>
       <div className="app-ticker"><Ticker /></div>

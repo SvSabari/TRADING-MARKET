@@ -716,14 +716,29 @@ async def aliceblue_history(
             
         # Try to resolve symbol to token if it's not numeric
         if not token.isdigit():
-            resolved = False
-            try:
-                # Try pya3's built-in resolution first
-                instrument = client._alice.get_instrument_by_symbol(exchange, f"{token}-EQ" if exchange == "NSE" and not token.endswith("-EQ") else token)
-                token = str(instrument.token)
+            # Hardcoded Index Tokens for Aliceblue
+            INDEX_MAP = {
+                'NIFTY': ('26000', 'NSE::index'),
+                'BANKNIFTY': ('26009', 'NSE::index'),
+                'FINNIFTY': ('26037', 'NSE::index'),
+                'MIDCPNIFTY': ('26074', 'NSE::index'),
+                'SENSEX': ('51', 'BSE'),
+                'NIFTYNXT50': ('26013', 'NSE::index')
+            }
+            if token.upper() in INDEX_MAP:
+                token, exchange = INDEX_MAP[token.upper()]
                 resolved = True
-            except Exception:
-                pass
+            else:
+                resolved = False
+                
+            if not resolved:
+                try:
+                    # Try pya3's built-in resolution first
+                    instrument = client._alice.get_instrument_by_symbol(exchange, f"{token}-EQ" if exchange == "NSE" and not token.endswith("-EQ") else token)
+                    token = str(instrument.token)
+                    resolved = True
+                except Exception:
+                    pass
                 
             # Fallback to reading the CSV directly (pya3 has a bug in some versions that throws 'module' object is not callable)
             if not resolved:
@@ -768,8 +783,11 @@ async def aliceblue_history(
                 
             if "stat" in data and data["stat"] == "Not_Ok":
                 raise HTTPException(status_code=400, detail=data.get("emsg", "Failed to load AliceBlue historical data"))
-                
+                    
             return {"symbol": symbol, "rows": data.get("result", [])}
             
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        import traceback
+        raise HTTPException(status_code=500, detail=traceback.format_exc())

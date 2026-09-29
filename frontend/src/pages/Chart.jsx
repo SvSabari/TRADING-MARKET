@@ -24,16 +24,19 @@ export default function Chart() {
     return d.toISOString().split("T")[0];
   });
   const [toDate, setToDate] = useState(() => new Date().toISOString().split("T")[0]);
+  
+  const [inputFrom, setInputFrom] = useState(fromDate);
+  const [inputTo, setInputTo] = useState(toDate);
   const [interval, setIntervalVal] = useState("1"); // 1, 5, 15, D
 
   useEffect(() => {
     const loadSymbols = async () => {
       try {
-        const { data } = await api.get("/parquet/files");
-        const uniqueSymbols = data.files.map(f => f.symbol);
-        setSymbols(uniqueSymbols);
-        if (uniqueSymbols.length > 0 && !selectedSymbol) {
-          setSelectedSymbol(uniqueSymbols[0]);
+        const { data } = await api.get("/market/symbols");
+        const allSyms = Array.from(new Set([...(data.nifty50 || []), ...(data.symbols || [])]));
+        setSymbols(allSyms);
+        if (allSyms.length > 0 && !selectedSymbol) {
+          setSelectedSymbol("NIFTY");
         }
       } catch (e) {
         console.error("Failed to load symbols", e);
@@ -54,7 +57,7 @@ export default function Chart() {
   const gridClass = layout === 1 ? "grid-cols-1" : layout === 2 ? "grid-cols-2" : "grid-cols-2 grid-rows-2";
 
   return (
-    <div className="space-y-2 h-full flex flex-col overflow-y-auto pb-4" data-testid="chart-page">
+    <div className="space-y-1 w-full flex flex-col overflow-hidden" data-testid="chart-page" style={{ height: "calc(100vh - 120px)" }}>
       <div className="flex items-center justify-between gap-4">
         <h1 className="whitespace-nowrap shrink-0" style={{ fontFamily: "Chivo", fontWeight: 800, fontSize: 20, letterSpacing: "-0.02em" }}>Market Chart.</h1>
         
@@ -86,20 +89,30 @@ export default function Chart() {
       </div>
 
       {dataSource === "aliceblue" && (
-        <div className="flex items-end gap-4 p-4 rounded shadow-sm" style={{ background: "var(--surface)", border: "1px solid var(--border)" }}>
-           <div>
-             <div className="text-[10px] uppercase tracking-wider mb-1" style={{ color: "var(--text-secondary)" }}>From Date</div>
-             <input type="date" className="terminal p-2 rounded text-sm outline-none" style={{ background: "var(--bg)", border: "1px solid var(--border)", color: "var(--text-primary)" }} value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
-           </div>
-           <div>
-             <div className="text-[10px] uppercase tracking-wider mb-1" style={{ color: "var(--text-secondary)" }}>To Date</div>
-             <input type="date" className="terminal p-2 rounded text-sm outline-none" style={{ background: "var(--bg)", border: "1px solid var(--border)", color: "var(--text-primary)" }} value={toDate} onChange={(e) => setToDate(e.target.value)} />
-           </div>
-        </div>
-      )}
-
-      <div className={`flex-1 relative grid gap-2 ${gridClass}`} style={{ minHeight: layout === 4 ? "800px" : "60vh" }}>
-        {symbols.length > 0 && chartConfigs.map((cfg) => (
+          <div className="flex items-end gap-3 px-3 py-1.5 rounded mb-1 shrink-0" style={{ background: "var(--surface)", border: "1px solid var(--border)" }}>
+             <div>
+               <div className="text-[9px] uppercase tracking-wider mb-0.5 font-bold" style={{ color: "var(--text-secondary)" }}>From Date</div>
+               <input type="date" className="terminal px-2 py-0.5 rounded text-xs outline-none h-[26px]" style={{ background: "var(--bg)", border: "1px solid var(--border)", color: "var(--text-primary)" }} value={inputFrom} onChange={(e) => setInputFrom(e.target.value)} />
+             </div>
+             <div>
+               <div className="text-[9px] uppercase tracking-wider mb-0.5 font-bold" style={{ color: "var(--text-secondary)" }}>To Date (Optional)</div>
+               <input type="date" className="terminal px-2 py-0.5 rounded text-xs outline-none h-[26px]" style={{ background: "var(--bg)", border: "1px solid var(--border)", color: "var(--text-primary)" }} value={inputTo} onChange={(e) => setInputTo(e.target.value)} />
+             </div>
+             <button 
+               className="btn btn-primary px-4 font-bold mono uppercase tracking-widest flex items-center justify-center"
+               style={{ height: '26px', fontSize: '10px' }}
+               onClick={() => {
+                 setFromDate(inputFrom);
+                 setToDate(inputTo || inputFrom);
+               }}
+             >
+               Load
+             </button>
+          </div>
+        )}
+  
+        <div className={`flex-1 relative grid gap-2 ${gridClass}`} style={{ minHeight: 0, height: 0 }}>
+        {chartConfigs.map((cfg) => (
           <ChartWidget 
             key={cfg.id}
             initialSymbol={cfg.defaultSymbol}

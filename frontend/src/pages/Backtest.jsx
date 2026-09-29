@@ -208,6 +208,16 @@ export default function Backtest() {
               onChange={e => setForm({ ...form, qty: e.target.value })} />
           </div>
           <div>
+            <label style={{ display: "block", fontSize: 10, fontFamily: "JetBrains Mono", color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>Timeframe</label>
+            <select className="terminal" value={form.timeframe || "1min"}
+              onChange={e => setForm({ ...form, timeframe: e.target.value })}>
+              <option value="1min">1 Min</option>
+              <option value="5min">5 Min</option>
+              <option value="15min">15 Min</option>
+              <option value="60min">1 Hour</option>
+            </select>
+          </div>
+          <div>
             <label style={{ display: "block", fontSize: 10, fontFamily: "JetBrains Mono", color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>Target %</label>
             <input className="terminal" type="number" step="0.1" min="0.1" value={form.target_pct}
               onChange={e => setForm({ ...form, target_pct: e.target.value })} />

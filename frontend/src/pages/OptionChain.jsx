@@ -43,11 +43,18 @@ export default function OptionChain() {
   const totalChangeOi = chain.rows.reduce((acc, r) => acc + r.ce_change_oi + r.pe_change_oi, 0);
   const totalOiChangePct = totalPreviousOi > 0 ? (totalChangeOi / totalPreviousOi) * 100 : 0;
 
+  const totalCeOi = chain.rows.reduce((acc, r) => acc + r.ce_oi, 0);
+  const totalPeOi = chain.rows.reduce((acc, r) => acc + r.pe_oi, 0);
+  const totalOi = totalCeOi + totalPeOi;
+  const cePct = totalOi > 0 ? (totalCeOi / totalOi) * 100 : 50;
+  const pePct = totalOi > 0 ? (totalPeOi / totalOi) * 100 : 50;
+
   return (
     <div className={`space-y-4 transition-opacity duration-200 ${isValidating ? 'opacity-50 pointer-events-none' : 'opacity-100'}`} data-testid="option-chain-page">
       <div>
         <div className="flex flex-wrap items-center gap-4 mb-1">
           <h1 className="whitespace-nowrap" style={{ fontFamily: "Chivo", fontWeight: 900, fontSize: 28, letterSpacing: "-0.02em" }}>Option chain</h1>
+
           <select 
             value={indices.includes(symbol) ? "" : symbol}
             onChange={(e) => setSymbol(e.target.value)}
@@ -88,6 +95,32 @@ export default function OptionChain() {
         </div>
         <p className="dim text-sm mt-1">Live PCR, Max Pain, OI heat-strip, IV smile (Black-Scholes Newton-Raphson) and per-strike Greeks. Source: <span className="mono buy">{chain.source === "synthetic" ? "offline" : (chain.source || "offline")}</span></p>
       </div>
+
+      <div className="bg-[var(--surface)] border border-[var(--border)] rounded-md p-4 mb-4">
+        <div className="flex justify-between items-end mb-2">
+          <div>
+            <div className="text-[10px] font-mono text-[var(--text-secondary)] uppercase tracking-widest mb-1">Total CE OI</div>
+            <div className="font-bold text-red-500">{fmtNum(totalCeOi, 0)}</div>
+          </div>
+          <div className="text-center">
+            <div className="text-[11px] font-bold text-[var(--text-primary)]">OI Sentiment</div>
+            <div className="text-[9px] font-mono text-[var(--text-secondary)]">CE vs PE Dominance</div>
+          </div>
+          <div className="text-right">
+            <div className="text-[10px] font-mono text-[var(--text-secondary)] uppercase tracking-widest mb-1">Total PE OI</div>
+            <div className="font-bold text-green-500">{fmtNum(totalPeOi, 0)}</div>
+          </div>
+        </div>
+        <div className="h-3 w-full bg-[var(--bg)] rounded-full flex overflow-hidden border border-[var(--border)]">
+          <div style={{ width: `${cePct}%` }} className="h-full bg-red-500/80 transition-all duration-500" title={`CE OI: ${cePct.toFixed(1)}%`} />
+          <div style={{ width: `${pePct}%` }} className="h-full bg-green-500/80 transition-all duration-500" title={`PE OI: ${pePct.toFixed(1)}%`} />
+        </div>
+        <div className="flex justify-between mt-1 px-1">
+          <div className="text-[9px] font-mono text-red-500">{cePct.toFixed(1)}%</div>
+          <div className="text-[9px] font-mono text-green-500">{pePct.toFixed(1)}%</div>
+        </div>
+      </div>
+
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
         <StatTile label={`${symbol} spot`} value={fmtNum(chain.spot)} testid="oc-spot" big />
         <StatTile label="ATM strike" value={fmtNum(chain.atm, 0)} testid="oc-atm" big />

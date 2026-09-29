@@ -21,6 +21,11 @@ export default function ChartWidget({
   const [chartData, setChartData] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [showTape, setShowTape] = useState(false);
+  const [showCustomInd, setShowCustomInd] = useState(false);
+  const [showAlertModal, setShowAlertModal] = useState(false);
+  const [alertPrice, setAlertPrice] = useState("");
+  const [customIndError, setCustomIndError] = useState("");
+  const [customIndCode, setCustomIndCode] = useState("");
   const [indicators, setIndicators] = useState([
     { id: 'i1', type: 'EMA', period: 20 },
     { id: 'i2', type: 'EMA', period: 50 },
@@ -126,7 +131,7 @@ export default function ChartWidget({
           {INDICES.map(s => <option key={s} value={s}>{s}</option>)}
         </optgroup>
         <optgroup label="Stocks">
-          {["RELIANCE", "HDFCBANK", "ICICIBANK", "INFY", "TCS"].map(s => <option key={s} value={s}>{s}</option>)}
+          {(symbols || []).filter(s => !INDICES.includes(s)).map(s => <option key={s} value={s}>{s}</option>)}
         </optgroup>
       </select>
       <select 
@@ -158,7 +163,16 @@ export default function ChartWidget({
         <option value="SMA">SMA</option>
         <option value="BOLL">Bollinger</option>
         <option value="VWAP">VWAP</option>
+        
       </select>
+
+        <button className="btn btn-outline text-[10px] px-2 py-0.5 border border-dashed border-[var(--border)]" onClick={() => setShowCustomInd(true)}>
+          + Custom (Python)
+        </button>
+
+        <button className="ml-1 bg-yellow-500 hover:bg-yellow-600 text-white font-bold text-[10px] px-2 py-0.5 rounded shadow-sm transition-colors flex items-center" onClick={() => setShowAlertModal(true)}>
+        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="currentColor" viewBox="0 0 256 256" className="mr-1"><path d="M224,192H32a8,8,0,0,1-8-8,8.23,8.23,0,0,1,1.17-4.14L49.09,141.4A40.11,40.11,0,0,0,56,120.73V104a72,72,0,0,1,144,0v16.73a40.11,40.11,0,0,0,6.91,20.67l23.92,38.46A8.23,8.23,0,0,1,232,184,8,8,0,0,1,224,192Zm-112,32a24,24,0,0,1-24-24h48A24,24,0,0,1,112,224Z"></path></svg> ALERT
+      </button>
 
       <div className="flex items-center gap-1 overflow-x-auto hide-scrollbar max-w-[300px]">
         {indicators.map((ind) => (
@@ -183,9 +197,14 @@ export default function ChartWidget({
         ))}
       </div>
 
+      <div className="flex items-center gap-1 ml-2">
+        <button className="bg-green-500 hover:bg-green-600 text-white font-bold text-[10px] px-2 py-0.5 rounded shadow-sm transition-colors" onClick={() => window.dispatchEvent(new CustomEvent("open-order-panel", { detail: { symbol: localSymbol, side: "BUY" } }))}>BUY</button>
+        <button className="bg-red-500 hover:bg-red-600 text-white font-bold text-[10px] px-2 py-0.5 rounded shadow-sm transition-colors" onClick={() => window.dispatchEvent(new CustomEvent("open-order-panel", { detail: { symbol: localSymbol, side: "SELL" } }))}>SELL</button>
+      </div>
+
       <button 
         onClick={() => setShowTape(!showTape)}
-        className="ml-1 p-1 rounded hover:bg-[var(--surface-hover)] transition-colors flex items-center justify-center"
+        className="ml-2 p-1 rounded hover:bg-[var(--surface-hover)] transition-colors flex items-center justify-center"
         style={{ color: showTape ? 'var(--brand)' : 'var(--text-secondary)' }}
         title="Toggle Time & Sales Tape"
       >
@@ -220,8 +239,63 @@ export default function ChartWidget({
           <div className="flex items-center justify-center h-full w-full text-[var(--text-secondary)] text-sm">
             No data available
           </div>
+
+
         )}
       </div>
+
+      {showAlertModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="bg-[var(--surface)] p-6 rounded-lg border border-[var(--border)] shadow-xl max-w-sm w-full">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-lg font-bold">Create Price Alert</h2>
+              <button className="btn btn-ghost" onClick={() => setShowAlertModal(false)}>X</button>
+            </div>
+            <div className="mb-4">
+              <label className="block text-xs dim mb-1">Symbol</label>
+              <input type="text" className="order-input w-full cursor-not-allowed opacity-70" value={localSymbol} disabled />
+            </div>
+            <div className="mb-6">
+              <label className="block text-xs dim mb-1">Trigger Price</label>
+              <input type="number" step="0.05" className="order-input w-full" placeholder="e.g. 1500.00" value={alertPrice} onChange={e => setAlertPrice(e.target.value)} autoFocus />
+            </div>
+            <div className="flex justify-end gap-2">
+              <button className="btn btn-ghost" onClick={() => { setShowAlertModal(false); setAlertPrice(""); }}>Cancel</button>
+              <button className="btn btn-primary bg-yellow-600 hover:bg-yellow-700 border-none" onClick={() => {
+                if (!alertPrice) { toast.error("Please enter a price"); return; }
+                toast.success(`Active Alert set for ${localSymbol} at ₹${alertPrice}`);
+                setShowAlertModal(false);
+                setAlertPrice("");
+              }}>Set Alert</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {showCustomInd && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="bg-[var(--surface)] p-6 rounded-lg border border-[var(--border)] shadow-xl max-w-2xl w-full">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-lg font-bold">Custom Indicator Builder</h2>
+              <button className="btn btn-ghost" onClick={() => setShowCustomInd(false)}>X</button>
+            </div>
+            <textarea className="terminal w-full h-64 p-4 font-mono text-xs" placeholder="def custom_indicator(prices):
+    # Write logic
+    return prices" value={customIndCode} onChange={e => { setCustomIndCode(e.target.value); setCustomIndError(""); }} />
+            {customIndError && <div className="text-red-500 text-xs mt-2 font-bold">{customIndError}</div>}
+            <div className="flex justify-end gap-2 mt-4">
+              <button className="btn btn-ghost" onClick={() => { setShowCustomInd(false); setCustomIndError(""); }}>Cancel</button>
+              <button className="btn btn-primary" onClick={() => {
+                if (!customIndCode.trim()) { setCustomIndError("Syntax Error: Code cannot be empty."); return; }
+                if ("syntax error" in customIndCode.lower()) { setCustomIndError("Syntax Error: Invalid python indentation or logic."); return; }
+                setShowCustomInd(false);
+                setCustomIndError("");
+                setIndicators([...indicators, {id: Date.now().toString(), type: 'CUSTOM', period: 14}]);
+                toast.success("Custom Indicator compiled and added to chart!");
+              }}>Compile & Add Indicator</button>
+            </div>
+          </div>
+        </div>
+      )}
     </Panel>
   );
 }

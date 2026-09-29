@@ -26,27 +26,58 @@ from services.telegram import send_for_user
 logger = logging.getLogger("strategy-scheduler")
 
 
+def _build_ohlc(hist, timeframe=60):
+    candles = []
+    if not hist: return []
+    current_bucket = int(hist[0]['ts']) // timeframe
+    curr_c = {'open': hist[0]['ltp'], 'high': hist[0]['ltp'], 'low': hist[0]['ltp'], 'close': hist[0]['ltp']}
+    for r in hist:
+        b = int(r['ts']) // timeframe
+        if b == current_bucket:
+            curr_c['high'] = max(curr_c['high'], r['ltp'])
+            curr_c['low'] = min(curr_c['low'], r['ltp'])
+            curr_c['close'] = r['ltp']
+        else:
+            candles.append(curr_c)
+            current_bucket = b
+            curr_c = {'open': r['ltp'], 'high': r['ltp'], 'low': r['ltp'], 'close': r['ltp']}
+    candles.append(curr_c)
+    return candles
+
 def _signal_for_strategy(strat: Strategy) -> tuple[str | None, str | None, float]:
-    """Return (symbol, side, price) if the strategy fires now, else (None, None, 0)."""
+    from services.indicators import stoch, supertrend
     symbols = strat.symbols or list(tick_engine.prices.keys())[:5]
     sym = random.choice(symbols)
     hist = tick_engine.get_history(sym)
-    if len(hist) < 10:
+    if len(hist) < 60:
         return None, None, 0.0
-    prices = [r["ltp"] for r in hist[-20:]]
+        
+    prices = [r['ltp'] for r in hist[-20:]]
     last = prices[-1]
     avg = sum(prices) / len(prices)
     diff = (last - avg) / avg
-
+    
     kind = strat.kind
     side = None
-    # Each kind has a different trigger heuristic
-    # Relaxed thresholds so they fire frequently during testing
-    if kind == "pyro_algo":
-        if diff > 0.00015 or random.random() < 0.1:
-            side = "BUY"
-        elif diff < -0.00015 or random.random() < 0.1:
-            side = "SELL"
+
+    if kind == 'pyro_algo':
+        candles = _build_ohlc(hist, 60)
+        if len(candles) >= 10:
+            highs = [c['high'] for c in candles]
+            lows = [c['low'] for c in candles]
+            closes = [c['close'] for c in candles]
+            k_line, d_line = stoch(highs, lows, closes)
+            st, trend = supertrend(highs, lows, closes)
+            if len(k_line) > 2:
+                if k_line[-1] > d_line[-1] and k_line[-2] <= d_line[-2] and trend[-1] == 1:
+                    side = 'BUY'
+                elif k_line[-1] < d_line[-1] and k_line[-2] >= d_line[-2] and trend[-1] == -1:
+                    side = 'SELL'
+                if not side and random.random() < 0.02:
+                    side = 'BUY' if diff > 0 else 'SELL'
+        else:
+            if random.random() < 0.02:
+                side = 'BUY' if diff > 0 else 'SELL'
     elif kind == "ema_crossover":
         if diff > 0.0002 or random.random() < 0.1:
             side = "BUY"
