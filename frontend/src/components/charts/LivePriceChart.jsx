@@ -8,11 +8,11 @@ const TOOLTIP_STYLE = { background: "var(--surface)", border: "1px solid var(--b
 export default function LivePriceChart({ history }) {
   const formatter = useMemo(() => (t) => new Date(t).toLocaleTimeString("en-IN", { hour12: false }).slice(0, 8), []);
   return (
-    <div style={{ height: 280 }}>
+    <div className="flex-1 w-full" style={{ minHeight: 280 }}>
       <ResponsiveContainer width="100%" height="100%">
         <LineChart data={history} margin={{ top: 10, right: 20, bottom: 10, left: 0 }}>
           <XAxis dataKey="ts" tick={X_TICK} tickFormatter={formatter} stroke="#222" minTickGap={40} />
-          <YAxis domain={["auto", "auto"]} tick={TICK} stroke="#222" />
+          <YAxis domain={["auto", "auto"]} padding={{ top: 20, bottom: 20 }} tick={TICK} stroke="#222" tickFormatter={(v) => v.toFixed(1)} />
           <Tooltip contentStyle={TOOLTIP_STYLE} labelStyle={{ color: "#888" }} />
           <Line type="linear" dataKey="ltp" stroke="#00E676" strokeWidth={1.5} dot={false} isAnimationActive={false} />
         </LineChart>

@@ -80,7 +80,7 @@ export default function Dashboard() {
               </select>
             </div>
           }
-          className="lg:col-span-2"
+          className="lg:col-span-2 flex flex-col"
         >
           <LivePriceChart history={history} />
         </Panel>
