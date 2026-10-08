@@ -187,6 +187,7 @@ export default function QuickOrderPanel({ watchlist = [] }) {
 
       await api.post("/orders", payload);
       toast.success("Order placed successfully!");
+      window.dispatchEvent(new Event('orderPlaced'));
 
       // Reset form
       setSymbol("");
@@ -211,6 +212,7 @@ export default function QuickOrderPanel({ watchlist = [] }) {
             }
             await api.post("/orders", payload);
             toast.success("Mock Order placed successfully!");
+            window.dispatchEvent(new Event('orderPlaced'));
             setSymbol("");
             setQuantity(1);
             setPrice("");

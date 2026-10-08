@@ -7,7 +7,7 @@ import Panel from "@/components/Panel";
 
 export default function PremiumMatcher({ preset, showSymbolColumn }) {
   const [rangeSize, setRangeSize] = useState(10);
-  const [maxDiff, setMaxDiff] = useState(5);
+  const [maxDiff, setMaxDiff] = useState(50);
   const [trackedPairs, setTrackedPairs] = useState([]);
   const [isOrdering, setIsOrdering] = useState(false);
 
@@ -116,6 +116,8 @@ export default function PremiumMatcher({ preset, showSymbolColumn }) {
                 <option value={10}>&lt;= 10.0</option>
                 <option value={20}>&lt;= 20.0</option>
                 <option value={50}>&lt;= 50.0</option>
+                <option value={100}>&lt;= 100.0</option>
+                <option value={200}>&lt;= 200.0</option>
               </select>
             </div>
           </div>
@@ -126,6 +128,7 @@ export default function PremiumMatcher({ preset, showSymbolColumn }) {
             <thead>
               <tr className="border-b border-[#333] text-xs dim">
                 {showSymbolColumn && <th className="p-2 font-normal">SYMBOL</th>}
+                <th className="p-2 font-normal">TYPE</th>
                 <th className="p-2 font-normal">CURRENT PRICE</th>
                 <th className="p-2 font-normal">CALL STRIKE</th>
                 <th className="p-2 font-normal">CALL LTP</th>
@@ -144,14 +147,19 @@ export default function PremiumMatcher({ preset, showSymbolColumn }) {
                 </tr>
               ) : pairs.length === 0 ? (
                 <tr>
-                  <td colSpan={showSymbolColumn ? 8 : 7} className="p-4 text-center dim text-sm">
-                    No matching pairs found in this range.
+                  <td colSpan={showSymbolColumn ? 9 : 8} className="p-4 text-center dim text-sm">
+                    No matching pairs found in this range. (Ensure broker session is connected for live option quotes)
                   </td>
                 </tr>
               ) : (
                 pairs.map((p, idx) => (
                   <tr key={`${p.symbol}-${p.callStrike}-${p.putStrike}-${idx}`} className="border-b border-[#EBE3DB] bg-white hover:bg-[#F5F0EB]">
                     {showSymbolColumn && <td className="p-2 text-sm mono font-bold text-[var(--brand)]">{p.symbol}</td>}
+                    <td className="p-2">
+                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${p.type === "straddle" ? "bg-blue-100 text-blue-700" : "bg-amber-100 text-amber-700"}`}>
+                        {(p.type || "straddle").toUpperCase()}
+                      </span>
+                    </td>
                     <td className="p-2 text-sm mono dim">{fmtNum(p.spot)}</td>
                     <td className="p-2 text-sm mono">
                       {fmtNum(p.callStrike, 0)}
@@ -161,7 +169,7 @@ export default function PremiumMatcher({ preset, showSymbolColumn }) {
                       {fmtNum(p.putStrike, 0)}
                     </td>
                     <td className="p-2 text-sm mono sell">{fmtNum(p.putLtp)}</td>
-                    <td className="p-2 text-sm mono" style={{ color: p.diff < 2 ? "#0096FF" : "inherit" }}>
+                    <td className="p-2 text-sm mono" style={{ color: p.diff < 2 ? "#0096FF" : p.diff < 10 ? "#22c55e" : "inherit" }}>
                       {fmtNum(p.diff)}
                     </td>
                     <td className="p-2 text-right">

@@ -1,17 +1,20 @@
 from fastapi import APIRouter, Depends, Query
 from typing import List, Optional, Dict, Any
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
+from sqlalchemy import func
 
 from auth import get_current_user
 from constants import NIFTY_50, ALL_SYMBOLS
-from models import User
+from models import User, SymbolMaster
 from services.market_data import tick_engine
-from db import db
+from db import get_db
 
 router = APIRouter(prefix="/market", tags=["market"])
 
 
 @router.get("/symbols")
-async def list_symbols() -> Dict[str, Any]:
+async def list_symbols(session: AsyncSession = Depends(get_db)) -> Dict[str, Any]:
     default_lots = {
         "NIFTY": 25, "BANKNIFTY": 15, "FINNIFTY": 40, "MIDCPNIFTY": 75, "SENSEX": 10, "NIFTYNXT50": 25,
         "RELIANCE": 250, "HDFCBANK": 550, "ICICIBANK": 700, "INFY": 400, "TCS": 175,
@@ -27,16 +30,28 @@ async def list_symbols() -> Dict[str, Any]:
         "SUNTV": 500, "TVSMOTOR": 700, "VEDL": 2000, "HAL": 300, "BHEL": 5250
     }
 
-    count = await db.symbol_master.count_documents({})
+    stmt_count = select(func.count(SymbolMaster.symbol))
+    result_count = await session.execute(stmt_count)
+    count = result_count.scalar_one()
+    
     if count < len(default_lots):
-        await db.symbol_master.delete_many({})
-        docs = [{"symbol": sym, "lot_size": size, "exchange": "NSE"} for sym, size in default_lots.items()]
-        await db.symbol_master.insert_many(docs)
+        stmt_del = select(SymbolMaster)
+        res_del = await session.execute(stmt_del)
+        all_sm = res_del.scalars().all()
+        for sm in all_sm:
+            await session.delete(sm)
+            
+        for sym, size in default_lots.items():
+            session.add(SymbolMaster(symbol=sym, lot_size=size, exchange="NSE"))
+        await session.commit()
 
-    cursor = db.symbol_master.find({}, {"_id": 0, "symbol": 1, "lot_size": 1})
+    stmt = select(SymbolMaster)
+    result = await session.execute(stmt)
+    masters = result.scalars().all()
+    
     lot_sizes = {}
-    async for doc in cursor:
-        lot_sizes[doc["symbol"]] = doc["lot_size"]
+    for doc in masters:
+        lot_sizes[doc.symbol] = doc.lot_size
 
     # Return all symbols from the database as the valid symbols list
     all_symbols_from_db = sorted(list(lot_sizes.keys()))
@@ -64,16 +79,23 @@ async def top_movers(n: int = 10, user: User = Depends(get_current_user)):
 
 
 @router.get("/feed-status")
-async def feed_status():
+async def feed_status(user: User = Depends(get_current_user)):
     """Return status of live feed."""
     from services.live_feed_manager import live_feed_manager
-    return live_feed_manager.status()
+    st = live_feed_manager.status()
+    if st.get("active_user_id") != user.id:
+        st["source"] = "none"
+        st["active_broker"] = None
+        st["active_user_id"] = None
+    return st
 
 @router.get("/debug-prices")
 async def debug_prices():
     from services.market_data import tick_engine
+    nfo_keys = [k for k in tick_engine.prices.keys() if "NFO" in k]
     return {
         "size": len(tick_engine.prices),
-        "nfo_count": sum(1 for k in tick_engine.prices.keys() if "NFO" in k),
+        "nfo_count": len(nfo_keys),
+        "nfo_keys": nfo_keys[:30],
         "sample": {k: float(v) for k, v in list(tick_engine.prices.items())[:20] if not str(v).startswith("<")}
     }

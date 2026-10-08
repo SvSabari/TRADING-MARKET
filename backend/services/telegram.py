@@ -41,7 +41,13 @@ async def resolve_token(db, user_id: str) -> tuple[str, str, bool]:
     if LOCAL_ONLY:
         return "", "", False
     from services.crypto import decrypt_str
-    doc = await db.telegram_settings.find_one({"user_id": user_id})
+    from sqlalchemy import select
+    from db import AsyncSessionLocal
+    from models import TelegramSettings
+    async with AsyncSessionLocal() as session:
+        res = await session.execute(select(TelegramSettings).where(TelegramSettings.user_id == user_id))
+        doc_obj = res.scalar_one_or_none()
+        doc = {"chat_id": doc_obj.chat_id, "notifications_enabled": doc_obj.notifications_enabled} if doc_obj else None
     if not doc or not doc.get("enabled", True):
         return "", "", False
     user_token = decrypt_str(doc.get("bot_token", "")) if doc.get("bot_token") else ""

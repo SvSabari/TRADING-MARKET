@@ -25,7 +25,9 @@ import logging
 import os
 from typing import Dict, Optional
 
-from db import db
+from sqlalchemy import select, update, insert, delete
+from db import AsyncSessionLocal
+from models import BrokerConnection
 from services.crypto import decrypt_str
 from services.feeds.base import LiveFeed
 from services.instrument_map import (
@@ -87,13 +89,18 @@ class LiveFeedManager:
         if LOCAL_ONLY:
             return None
         
-        # Strictly look for the broker where is_data_feed is True
-        doc = await db.broker_connections.find_one({
-            "is_data_feed": True,
-            "connected": True,
-        })
-        if doc and (doc.get("access_token") or doc.get("credentials")):
-            return {"broker": doc["broker"], **doc}
+        async with AsyncSessionLocal() as session:
+            doc = (await session.execute(
+                select(BrokerConnection).where(BrokerConnection.is_data_feed == True, BrokerConnection.connected == True).limit(1)
+            )).scalar_one_or_none()
+            
+            if doc and (doc.access_token or doc.credentials):
+                return {
+                    "broker": doc.broker,
+                    "user_id": doc.user_id,
+                    "access_token": doc.access_token,
+                    "credentials": doc.credentials
+                }
         return None
 
     async def _build_feed(self, conn: dict) -> Optional[LiveFeed]:
@@ -107,7 +114,7 @@ class LiveFeedManager:
             if broker == "zerodha":
                 from services.feeds.kite_feed import KiteFeed
                 api_key = decrypt_str(creds.get("api_key") or conn.get("api_key", ""))
-                access_token = decrypt_str(conn["access_token"])
+                access_token = decrypt_str(conn.get("access_token", ""))
                 if not (api_key and access_token):
                     return None
                 return KiteFeed(
@@ -116,7 +123,7 @@ class LiveFeedManager:
                 )
             if broker == "upstox":
                 from services.feeds.upstox_feed import UpstoxFeed
-                access_token = decrypt_str(conn["access_token"])
+                access_token = decrypt_str(conn.get("access_token", ""))
                 if not access_token:
                     return None
                 return UpstoxFeed(
@@ -189,6 +196,31 @@ class LiveFeedManager:
                 logger.info("No live broker connections left — stopping feeds")
                 await self._stop_active()
             return
+
+        # Check if the active feed has detected an expired token
+        if self._active and getattr(self._active, 'token_expired', False):
+            logger.warning(
+                "LiveFeedManager: %s feed has expired token — marking broker disconnected in DB",
+                self._active_broker
+            )
+            # Mark the broker connection as disconnected in the DB
+            try:
+                async with AsyncSessionLocal() as session:
+                    doc = (await session.execute(
+                        select(BrokerConnection).where(
+                            BrokerConnection.broker == self._active_broker,
+                            BrokerConnection.user_id == self._active_user_id,
+                        )
+                    )).scalar_one_or_none()
+                    if doc:
+                        doc.connected = False
+                        doc.access_token = None  # Clear expired token
+                        await session.commit()
+            except Exception as e:
+                logger.error("Failed to mark broker disconnected: %s", e)
+            await self._stop_active()
+            return
+
         # check if feed is connected OR actively connecting (task still running)
         is_healthy = False
         if self._active:
@@ -214,6 +246,7 @@ class LiveFeedManager:
         tick_engine.live_source = conn["broker"]
         logger.info("LiveFeedManager: started %s feed for user=%s",
                     conn["broker"], conn.get("user_id"))
+
 
     async def _loop(self) -> None:
         self.running = True

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
-import { fmtDateTime, fmtInt, fmtNum } from "@/lib/format";
+import { fmtDateTime, fmtTime, fmtInt, fmtNum } from "@/lib/format";
 import Panel from "@/components/Panel";
 import { Plus } from "@phosphor-icons/react";
 
@@ -10,7 +10,8 @@ export default function Orders() {
   const [orders, setOrders] = useState([]);
   const [snap, setSnap] = useState([]);
   const [brokers, setBrokers] = useState(["mock"]);
-  const [form, setForm] = useState({ broker: "mock", symbol: "RELIANCE", side: "BUY", qty: 1, price: 0, order_type: "MARKET", product: "MIS" });
+  const [tab, setTab] = useState("real");
+  const [form, setForm] = useState({ broker: "aliceblue", symbol: "RELIANCE", side: "BUY", qty: 1, price: 0, order_type: "MARKET", product: "MIS" });
 
   const load = async () => {
     const [a, b, c] = await Promise.all([
@@ -21,10 +22,19 @@ export default function Orders() {
     setOrders(a.data.orders); setSnap(b.data.ticks);
     setBrokers(c.data.available);
   };
+
   useEffect(() => {
     load();
     const i = setInterval(load, 10000);
-    return () => clearInterval(i);
+    
+    // Instantly refresh when orders are placed via QuickOrderPanel
+    const handleOrder = () => load();
+    window.addEventListener('orderPlaced', handleOrder);
+    
+    return () => {
+      clearInterval(i);
+      window.removeEventListener('orderPlaced', handleOrder);
+    };
   }, []);
   useEffect(() => {
     // auto-fill price from snapshot
@@ -43,20 +53,19 @@ export default function Orders() {
     } catch (e) { toast.error(e?.response?.data?.detail || "Order failed"); }
   };
 
+  const displayedOrders = orders.filter(o => tab === "real" ? !o.is_mock : o.is_mock);
+
   return (
     <div className="space-y-4" data-testid="orders-page">
       <div>
         <h1 style={{ fontFamily: "Chivo", fontWeight: 900, fontSize: 28, letterSpacing: "-0.02em" }}>Trade book.</h1>
-        <p className="dim text-sm mt-1">Manual order pad + full execution history routed through the mock broker.</p>
+        <p className="dim text-sm mt-1">Manual order pad + full execution history routed directly to AliceBlue live servers.</p>
       </div>
 
       <Panel title="Place order" kicker="manual">
         <form className="p-4 grid grid-cols-2 md:grid-cols-6 gap-3" onSubmit={submit}>
-          <div>
-            <label className="block dim text-[10px] mono uppercase tracking-widest mb-1">Broker</label>
-            <select className="terminal" value={form.broker} data-testid="order-broker-select" onChange={(e) => setForm({ ...form, broker: e.target.value })}>
-              {brokers.map((b) => <option key={b} value={b}>{b}</option>)}
-            </select>
+          <div className="hidden">
+            <input type="hidden" value="aliceblue" />
           </div>
           <div>
             <label className="block dim text-[10px] mono uppercase tracking-widest mb-1">Symbol</label>
@@ -78,42 +87,73 @@ export default function Orders() {
             <label className="block dim text-[10px] mono uppercase tracking-widest mb-1">Price</label>
             <input className="terminal" type="number" step="0.01" value={form.price} data-testid="order-price-input" onChange={(e) => setForm({ ...form, price: parseFloat(e.target.value) })} />
           </div>
-          <button className={`btn justify-center ${form.side === "BUY" ? "btn-primary" : "btn-danger"}`} data-testid="order-submit-btn" type="submit">
-            <Plus size={14} weight="bold" /> {form.side} {form.symbol}
-          </button>
+          <div className="flex items-end">
+            <button className={`w-full py-2.5 px-4 rounded text-xs font-bold tracking-wider transition-colors flex items-center justify-center gap-1 ${form.side === "BUY" ? "bg-[#14532d] hover:bg-[#166534] text-white" : "bg-red-800 hover:bg-red-700 text-white"}`} data-testid="order-submit-btn" type="submit" style={{ height: '43px' }}>
+              <Plus size={14} weight="bold" /> {form.side} {form.symbol}
+            </button>
+          </div>
         </form>
       </Panel>
 
-      <Panel title="Executions" kicker={`${orders.length} orders`}>
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[700px] text-xs">
+      <Panel title="Executions" kicker={`${displayedOrders.length} orders`}>
+        <div className="flex border-b border-gray-200">
+          <button 
+            className={`flex-1 py-2.5 text-xs font-bold tracking-wider transition-colors ${tab === 'real' ? 'border-b-2 border-[#14532d] text-[#14532d] bg-green-50/30' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50'}`} 
+            onClick={() => setTab('real')}
+          >
+            REAL TRADES
+          </button>
+          <button 
+            className={`flex-1 py-2.5 text-xs font-bold tracking-wider transition-colors border-l border-gray-100 ${tab === 'mock' ? 'border-b-2 border-orange-500 text-orange-600 bg-orange-50/30' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50'}`} 
+            onClick={() => setTab('mock')}
+          >
+            PAPER TRADES (MOCK)
+          </button>
+        </div>
+        <div className="w-full overflow-hidden">
+          <table className="w-full text-xs">
           <thead><tr className="dim text-[10px] uppercase tracking-widest border-b border-[#222]">
-            <th className="text-left py-2 px-4">Time</th>
-            <th className="text-left py-2 px-4">Symbol</th>
-            <th className="text-left py-2 px-4">Side</th>
-            <th className="text-right py-2 px-4">Qty</th>
-            <th className="text-right py-2 px-4">Price</th>
-            <th className="text-left py-2 px-4">Broker</th>
-            <th className="text-left py-2 px-4">Source</th>
-            <th className="text-left py-2 px-4">Status</th>
+            <th className="text-left py-2 px-2">Time</th>
+            <th className="text-left py-2 px-2">Symbol</th>
+            <th className="text-left py-2 px-2">Side</th>
+            <th className="text-right py-2 px-2">Qty</th>
+            <th className="text-right py-2 px-2">Price</th>
+            <th className="text-left py-2 px-2">Broker</th>
+            <th className="text-left py-2 px-2">Source</th>
+            <th className="text-left py-2 px-2">Status</th>
           </tr></thead>
           <tbody className="cell-divider">
-            {orders.map((o) => (
+            {displayedOrders.map((o) => (
               <tr key={o.id} data-testid={`order-row-${o.id}`}>
-                <td className="py-2 px-4 mono dim">{fmtDateTime(o.placed_at)}</td>
-                <td className="py-2 px-4 mono">{o.symbol}</td>
-                <td className={`py-2 px-4 mono ${o.side === "BUY" ? "buy" : "sell"}`}>{o.side}</td>
-                <td className="py-2 px-4 text-right num">{fmtInt(o.qty)}</td>
-                <td className="py-2 px-4 text-right num">{fmtNum(o.price)}</td>
-                <td className="py-2 px-4 mono dim">{o.broker}</td>
-                <td className="py-2 px-4 mono dim">
+                <td className="py-2 px-2 mono dim whitespace-nowrap" title={fmtDateTime(o.placed_at)}>{fmtTime(o.placed_at)}</td>
+                <td className="py-2 px-2 mono">{o.symbol}</td>
+                <td className={`py-2 px-2 mono ${o.side === "BUY" ? "buy" : "sell"}`}>{o.side}</td>
+                <td className="py-2 px-2 text-right num">{fmtInt(o.qty)}</td>
+                <td className="py-2 px-2 text-right num">{fmtNum(o.price)}</td>
+                <td className="py-2 px-2 mono dim">{o.broker}</td>
+                <td className="py-2 px-2 mono dim">
                   {o.source.startsWith("strategy:") ? (
-                    <Link to="/strategies" className="text-blue-500 hover:underline" title="Click to view & manage this strategy">{o.source}</Link>
+                    <Link to="/strategies" className="text-blue-500 hover:underline" title="Click to view & manage this strategy">{o.source.replace("strategy:", "")}</Link>
                   ) : (
                     o.source
                   )}
                 </td>
-                <td className={`py-2 px-4 mono ${o.status === "FILLED" ? "buy" : ""}`}>{o.status}</td>
+                <td className="py-2 px-2 align-middle" title={o.reject_reason || ""}>
+  <div className="flex flex-col">
+    <span className={`mono ${o.status === "FILLED" ? "buy" : o.status === "REJECTED" ? "sell" : ""}`}>{o.status}</span>
+    {o.reject_reason && (
+      <span className="text-[9px] text-red-500/80 truncate max-w-[120px] lg:max-w-[200px] font-sans dim mt-0.5 leading-none">
+        {
+        o.reject_reason
+          .replace(/^(ORA|RED):/, '')
+          .replace(/'MIS' Orders are disallowed after system square off/i, 'Market closed for Intraday (MIS)')
+          .replace(/Margin Shortfall:INR ([0-9.]+) Available:INR ([0-9.]+) for .*/i, 'Margin Shortfall: ₹$1 (Available: ₹$2)')
+          .trim()
+      }
+      </span>
+    )}
+  </div>
+</td>
               </tr>
             ))}
             {orders.length === 0 && <tr><td colSpan={8} className="p-8 text-center dim text-xs">No orders yet.</td></tr>}

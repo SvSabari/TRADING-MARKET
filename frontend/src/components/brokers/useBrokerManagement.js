@@ -105,7 +105,7 @@ export function useBrokerManagement() {
   const connectAliceblue = useCallback(async () => {
     try {
       const { data } = await api.get("/brokers/aliceblue/login-url");
-      toast.message("Redirecting to Alice Blue…", { description: data.note });
+      toast.message("Redirecting to Alice Blue...", { description: data.note });
       window.location.href = data.login_url;
     } catch (e) {
       toast.error(e?.response?.data?.detail || "Save Alice Blue API key (App Code) + Client ID first.");

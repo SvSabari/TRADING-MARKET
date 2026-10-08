@@ -6,6 +6,26 @@ import os
 _NFO_DF = None
 _BFO_DF = None
 
+def reload_master_dfs():
+    """Force reload NFO and BFO DataFrames from disk. Call after fresh CSV download."""
+    global _NFO_DF, _BFO_DF
+    try:
+        csv_path = os.path.join(os.path.dirname(__file__), "NFO.csv")
+        _NFO_DF = pd.read_csv(csv_path, low_memory=False)
+        _NFO_DF["Strike"] = pd.to_numeric(_NFO_DF["Strike Price"], errors="coerce")
+        _NFO_DF["ExpiryDate"] = pd.to_datetime(_NFO_DF["Expiry Date"]).dt.date
+    except Exception as e:
+        print(f"[aliceblue_chain] Failed to reload NFO.csv: {e}")
+    try:
+        csv_path_bfo = os.path.join(os.path.dirname(__file__), "BFO.csv")
+        if os.path.exists(csv_path_bfo):
+            _BFO_DF = pd.read_csv(csv_path_bfo, low_memory=False)
+            _BFO_DF["Strike"] = pd.to_numeric(_BFO_DF["Strike Price"], errors="coerce")
+            _BFO_DF["ExpiryDate"] = pd.to_datetime(_BFO_DF["Expiry Date"]).dt.date
+    except Exception as e:
+        print(f"[aliceblue_chain] Failed to reload BFO.csv: {e}")
+
+
 async def build_aliceblue_chain(alice, symbol: str = "NIFTY", expiry: str = None) -> dict | None:
     global _NFO_DF, _BFO_DF
     from services.market_data import tick_engine
@@ -39,13 +59,18 @@ async def build_aliceblue_chain(alice, symbol: str = "NIFTY", expiry: str = None
         df = df_source[df_source["Symbol"] == symbol].copy()
         df = df[df["Instrument Type"].isin(["OPTIDX", "OPTSTK", "IO", "SO"])]
         if df.empty:
-            with open("alice_debug.txt", "w") as f: f.write("Aliceblue chain returning None: df empty after Instrument Type filter\n")
+            print(f"DEBUG: empty after instrument type filter for {symbol}")
             return None
         
         today_date = datetime.now(timezone.utc).date()
-        df = df[df["ExpiryDate"] >= today_date]
+        df_future = df[df["ExpiryDate"] >= today_date]
+        if not df_future.empty:
+            df = df_future
+        else:
+            max_exp = df["ExpiryDate"].max()
+            df = df[df["ExpiryDate"] == max_exp]
+        
         if df.empty:
-            with open("alice_debug.txt", "w") as f: f.write("Aliceblue chain returning None: df empty after Expiry filter\n")
             return None
         
         available_expiries = sorted(df["ExpiryDate"].unique())

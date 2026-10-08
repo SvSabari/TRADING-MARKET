@@ -34,6 +34,24 @@ class AliceblueFeed(LiveFeed):
             except Exception:
                 return
                 
+        if isinstance(message, dict):
+            if message.get("t") == "ck" and message.get("s") == "NOT_OK":
+                logger.error("Alice Blue WebSocket returned NOT_OK (Auth Failed). Token is invalid/rejected.")
+                self.token_expired = True
+                self.connected = False
+                if getattr(self, "_alice", None):
+                    if hasattr(self._alice, "_Aliceblue__stop_event") and self._alice._Aliceblue__stop_event:
+                        try:
+                            self._alice._Aliceblue__stop_event.set()
+                        except Exception:
+                            pass
+                    if hasattr(self._alice, "ws") and self._alice.ws:
+                        try:
+                            self._alice.ws.close()
+                        except Exception:
+                            pass
+                return
+
         if isinstance(message, list):
             for item in message:
                 self._process_message(item)
@@ -206,10 +224,22 @@ class AliceblueFeed(LiveFeed):
         pya3.alicebluepy.Aliceblue.invalid_sess = lambda self_instance, sess: {'stat': 'Ok'}
         pya3.alicebluepy.Aliceblue.createSession = custom_create_session
         
-        pya3.alicebluepy.time = datetime.time
-        import time as py_time
-        pya3.alicebluepy.sleep = py_time.sleep
-        pya3.alicebluepy.logger = logging.getLogger("pya3_websocket")
+        # Monkey-patch __ws_run_forever to sleep on error and stop if token_expired
+        original_run_forever = pya3.alicebluepy.Aliceblue._Aliceblue__ws_run_forever if hasattr(pya3.alicebluepy.Aliceblue, "_Aliceblue__ws_run_forever") else None
+        
+        feed_self = self
+        def custom_ws_run_forever(self_instance):
+            while not self_instance._Aliceblue__stop_event.is_set():
+                if getattr(feed_self, "token_expired", False):
+                    logger.info("Alice Blue feed token expired — stopping ws_run_forever thread.")
+                    break
+                try:
+                    self_instance.ws.run_forever(ping_interval=3, ping_timeout=2)
+                except Exception as e:
+                    logger.warning(f"websocket run forever ended in exception, {e}")
+                py_time.sleep(5)  # Add 5s delay between reconnect attempts instead of 0.1s
+
+        pya3.alicebluepy.Aliceblue._Aliceblue__ws_run_forever = custom_ws_run_forever
 
         self._alice = pya3.alicebluepy.Aliceblue(
             user_id=self.client_code,

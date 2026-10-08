@@ -65,7 +65,13 @@ async def get_user_kite_service(db, user_id: str) -> Optional[KiteService]:
     fall back to the mock broker / synthetic data.
     """
     from services.crypto import decrypt_str
-    doc = await db.broker_connections.find_one({"user_id": user_id, "broker": "zerodha"})
+    from sqlalchemy import select
+    from db import AsyncSessionLocal
+    from models import BrokerConnection
+    async with AsyncSessionLocal() as session:
+        res = await session.execute(select(BrokerConnection).where(BrokerConnection.user_id == user_id, BrokerConnection.broker == "zerodha"))
+        doc_obj = res.scalar_one_or_none()
+        doc = doc_obj.__dict__ if doc_obj else None
     if not doc or doc.get("mock_mode") or not doc.get("api_key") or not doc.get("access_token"):
         return None
     api_key = decrypt_str(doc["api_key"])

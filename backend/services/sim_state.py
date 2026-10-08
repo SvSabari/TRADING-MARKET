@@ -2,13 +2,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import List, Dict
+from typing import List, Dict, Optional
 
 
 @dataclass
 class SimState:
     equity: float = 100000.0
-    position: int = 0  # +1 long, -1 short, 0 flat
+    position: int = 0        # +1 long, -1 short, 0 flat
     entry_price: float = 0.0
     qty: int = 0
     peak: float = 100000.0
@@ -17,9 +17,17 @@ class SimState:
     trades: int = 0
     curve: List[Dict] = field(default_factory=list)
     trades_log: List[Dict] = field(default_factory=list)
+
     # Option tracking
     is_index: bool = False
     index_entry: float = 0.0
-    opt_strike: int = 0
+    opt_strike: float = 0.0
     opt_type: str = ""
+    opt_expiry: Optional[str] = None
     opt_entry_premium: float = 0.0
+    opt_entry_source: str = ""
+
+    # Set at runtime by simulator
+    _symbol: str = ""
+    _trade_mode: str = "NONE"
+    _signal_ts: str = ""

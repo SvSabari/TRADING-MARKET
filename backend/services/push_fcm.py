@@ -56,11 +56,19 @@ async def send_for_user(db, user_id: str, title: str, body: str,
     """Fetch the user's registered devices and push to all of them."""
     if LOCAL_ONLY:
         return None
-    pref = await db.push_settings.find_one({"user_id": user_id})
-    if not pref or not pref.get("enabled", False):
-        return None
-    cur = db.push_tokens.find({"user_id": user_id})
-    tokens = [d["token"] async for d in cur]
+    from sqlalchemy import select
+    from db import AsyncSessionLocal
+    from models import PushSettings, PushToken
+    async with AsyncSessionLocal() as session:
+        res = await session.execute(select(PushSettings).where(PushSettings.user_id == user_id))
+        pref_obj = res.scalar_one_or_none()
+        if not pref_obj or not pref_obj.enabled:
+            return None
+        
+        res2 = await session.execute(select(PushToken).where(PushToken.user_id == user_id))
+        token_objs = res2.scalars().all()
+        tokens = [t.token for t in token_objs]
+        
     if not tokens:
         return None
     return await send_to_tokens(tokens, title, body, data)

@@ -215,7 +215,5 @@ td {
   color: var(--text-primary);
   border-bottom: 1px solid var(--border);
 }
-tr:hover td {
-  background: var(--surface-hover);
-}
+
 

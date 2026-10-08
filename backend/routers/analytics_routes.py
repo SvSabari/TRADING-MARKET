@@ -1,15 +1,16 @@
 """Option-chain analytics endpoints (live Kite when connected, synthetic fallback)."""
 from fastapi import APIRouter, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from auth import get_current_user
-from db import db
+from db import get_db
 from models import User
 from services.options_analytics import (
     build_option_chain, iv_smile, max_pain, oi_heatmap, pcr,
 )
 from services.options_sweeper import options_sweeper
 
-async def get_cached_or_build(symbol: str, user_id: str, expiry: str = None):
+async def get_cached_or_build(session: AsyncSession, symbol: str, user_id: str, expiry: str = None):
     from datetime import datetime, timezone
     from services.live_feed_manager import live_feed_manager
     
@@ -43,7 +44,7 @@ async def get_cached_or_build(symbol: str, user_id: str, expiry: str = None):
                         row["pe_change_ltp"] = tick_engine.change_pcts.get(pe_tok, row.get("pe_change_ltp", 0.0))
             return chain
 
-    chain = await build_option_chain(db, user_id, symbol, expiry)
+    chain = await build_option_chain(session, user_id, symbol, expiry)
     if chain and chain.get("rows") and len(chain["rows"]) > 0:
         options_sweeper.cache[cache_key] = chain
         options_sweeper.last_update[cache_key] = datetime.now(timezone.utc).timestamp()
@@ -59,9 +60,38 @@ async def get_cached_or_build(symbol: str, user_id: str, expiry: str = None):
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 
 
+@router.post("/refresh-contracts")
+async def refresh_contracts(user: User = Depends(get_current_user)):
+    """Download fresh NFO/BFO master contracts from AliceBlue and reload in memory."""
+    import httpx, os
+    from pathlib import Path
+    ROOT_DIR = Path(__file__).parent.parent
+    errors = []
+    try:
+        async with httpx.AsyncClient() as client:
+            res_nfo = await client.get('https://v2api.aliceblueonline.com/restpy/static/contract_master/NFO.csv', timeout=15.0)
+            if res_nfo.status_code == 200:
+                with open(ROOT_DIR / "NFO.csv", 'wb') as f: f.write(res_nfo.content)
+            res_bfo = await client.get('https://v2api.aliceblueonline.com/restpy/static/contract_master/BFO.csv', timeout=15.0)
+            if res_bfo.status_code == 200:
+                with open(ROOT_DIR / "BFO.csv", 'wb') as f: f.write(res_bfo.content)
+    except Exception as e:
+        errors.append(f"Download error: {e}")
+    try:
+        from aliceblue_chain import reload_master_dfs
+        reload_master_dfs()
+    except Exception as e:
+        errors.append(f"Reload error: {e}")
+    try:
+        from services.options_sweeper import options_sweeper
+        options_sweeper.cache.clear()
+        options_sweeper.last_update.clear()
+    except Exception as e:
+        errors.append(f"Cache clear error: {e}")
+    return {"ok": len(errors) == 0, "errors": errors, "message": "Master contracts refreshed and option chain cache cleared."}
 
 @router.get("/premium-matcher")
-async def premium_matcher_api(preset: str = "indices", range_size: int = 10, max_diff: float = 5.0, tracked: str = "", user: User = Depends(get_current_user)):
+async def premium_matcher_api(preset: str = "indices", range_size: int = 10, max_diff: float = 5.0, tracked: str = "", user: User = Depends(get_current_user), session: AsyncSession = Depends(get_db)):
     from services.premium_matcher import get_premium_matches_for_symbols
     from routers.market_routes import NIFTY_50
     from services.market_data import tick_engine
@@ -76,7 +106,7 @@ async def premium_matcher_api(preset: str = "indices", range_size: int = 10, max
     else:
         symbols = [preset]
         
-    matches = await get_premium_matches_for_symbols(db, user.id, symbols, range_size, max_diff)
+    matches = await get_premium_matches_for_symbols(session, user.id, symbols, range_size, max_diff)
     
     tracked_prices = {}
     if tracked:
@@ -88,9 +118,8 @@ async def premium_matcher_api(preset: str = "indices", range_size: int = 10, max
     return {"matches": matches, "tracked_prices": tracked_prices}
 
 @router.get("/option-chain")
-
-async def option_chain(symbol: str = "NIFTY", expiry: str = None, user: User = Depends(get_current_user)):
-    chain = await get_cached_or_build(symbol, user.id, expiry)
+async def option_chain(symbol: str = "NIFTY", expiry: str = None, user: User = Depends(get_current_user), session: AsyncSession = Depends(get_db)):
+    chain = await get_cached_or_build(session, symbol, user.id, expiry)
     return {
         "spot": chain["spot"],
         "atm": chain["atm"],
@@ -104,8 +133,8 @@ async def option_chain(symbol: str = "NIFTY", expiry: str = None, user: User = D
 
 
 @router.get("/greeks/{strike}")
-async def strike_greeks(strike: int, symbol: str = "NIFTY", user: User = Depends(get_current_user)):
-    chain = await get_cached_or_build(symbol, user.id)
+async def strike_greeks(strike: int, symbol: str = "NIFTY", user: User = Depends(get_current_user), session: AsyncSession = Depends(get_db)):
+    chain = await get_cached_or_build(session, symbol, user.id)
     for r in chain["rows"]:
         if int(r["strike"]) == int(strike):
             return {
@@ -123,12 +152,12 @@ async def strike_greeks(strike: int, symbol: str = "NIFTY", user: User = Depends
 
 
 @router.get("/oi-heatmap")
-async def oi_heatmap_endpoint(symbol: str = "NIFTY", expiry: str = None, user: User = Depends(get_current_user)):
-    chain = await get_cached_or_build(symbol, user.id, expiry)
+async def oi_heatmap_endpoint(symbol: str = "NIFTY", expiry: str = None, user: User = Depends(get_current_user), session: AsyncSession = Depends(get_db)):
+    chain = await get_cached_or_build(session, symbol, user.id, expiry)
     return {"spot": chain["spot"], "atm": chain["atm"], "data": oi_heatmap(chain), "source": chain.get("source", "offline"), "expiry": chain.get("expiry")}
 
 
 @router.get("/iv-smile")
-async def iv_smile_endpoint(symbol: str = "NIFTY", user: User = Depends(get_current_user)):
-    chain = await get_cached_or_build(symbol, user.id)
+async def iv_smile_endpoint(symbol: str = "NIFTY", user: User = Depends(get_current_user), session: AsyncSession = Depends(get_db)):
+    chain = await get_cached_or_build(session, symbol, user.id)
     return {"spot": chain["spot"], "atm": chain["atm"], "data": iv_smile(chain), "source": chain.get("source", "offline")}

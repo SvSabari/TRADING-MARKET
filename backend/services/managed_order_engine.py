@@ -19,7 +19,24 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional, Tuple
 
-from models import ManagedUser, ManagedUserBroker, Order
+from models import ManagedUser, Order
+from pydantic import BaseModel, Field
+from db import AsyncSessionLocal
+from sqlalchemy import select
+
+class ManagedUserBroker(BaseModel):
+    broker: str
+    session_generated: bool = False
+    session_date: str = ""
+    session_token: str = ""
+    api_key: str = ""
+    api_secret: str = ""
+    account_number: str = ""
+    client_code: str = ""
+    credentials: dict = Field(default_factory=dict)
+    
+    class Config:
+        extra = "allow"
 from services.crypto import decrypt_str
 
 logger = logging.getLogger("managed-order-engine")
@@ -121,23 +138,46 @@ async def _route_for_managed_user_broker(
 
     try:
         if "alice" in broker_name:
-            from pya3 import Aliceblue
+            from services.brokers.aliceblue_client import AliceBlueClient
             user_id_val = creds.get("user_id") or b.account_number
-            alice = Aliceblue(user_id=user_id_val, api_key=api_key, session_id=session_token)
-            # Build instrument token for the symbol
+            client = AliceBlueClient(client_code=user_id_val, api_key=api_key, session_id=session_token)
+            
             from services.instrument_map import ALICEBLUE_TOKENS
-            instrument_token = next((k for k, sym in ALICEBLUE_TOKENS.items() if sym == symbol), f"NSE|{symbol}")
-            result = alice.place_order(
-                transaction_type=alice.TransactionType.Buy if side.upper() == "BUY" else alice.TransactionType.Sell,
-                instrument=alice.get_instrument_by_token("NSE", int(instrument_token.split("|")[-1])) if "|" in instrument_token else None,
-                quantity=qty,
-                order_type=alice.OrderType.Market if order_type == "MARKET" else alice.OrderType.Limit,
-                product_type=alice.ProductType.Intraday if product == "MIS" else alice.ProductType.Delivery,
-                price=price if order_type == "LIMIT" else 0,
+            instrument_token = next((k for k, sym in ALICEBLUE_TOKENS.items() if sym == symbol), None)
+            if not instrument_token:
+                instrument_token = f"NSE|{symbol}"
+                
+            order_id = client.place_order(
+                instrument_token=instrument_token,
+                transaction_type=side.upper(),
+                quantity=int(qty),
+                order_type=order_type,
+                product="I" if product == "MIS" else "D",
+                price=price if order_type == "LIMIT" else None,
             )
-            if result and isinstance(result, dict) and result.get("NOrdNo"):
-                return _live_response(result["NOrdNo"], price, "live-aliceblue-managed")
-            raise Exception(f"AliceBlue managed order failed: {result}")
+            if order_id:
+                # Instantly check if RMS rejected it
+                import asyncio
+                await asyncio.sleep(0.5)
+                try:
+                    history = client.get_order_history(str(order_id))
+                    if isinstance(history, dict):
+                        status = (history.get("Status") or history.get("orderstatus") or "").lower()
+                        if status == "rejected":
+                            reason = history.get("RejReason") or history.get("Cancel notes") or history.get("remarks") or "RMS Rejection (Insufficient Funds/Margin)"
+                            return {"broker_order_id": order_id, "status": "REJECTED", "fill_price": price, "reject_reason": f"Rejected by Broker: {reason}", "mode": "live-aliceblue-managed"}
+                    elif isinstance(history, list) and len(history) > 0:
+                        for item in history:
+                            status = (item.get("Status") or item.get("orderstatus") or "").lower()
+                            if status == "rejected":
+                                reason = item.get("RejReason") or item.get("Cancel notes") or item.get("remarks") or "RMS Rejection (Insufficient Funds/Margin)"
+                                return {"broker_order_id": order_id, "status": "REJECTED", "fill_price": price, "reject_reason": f"Rejected by Broker: {reason}", "mode": "live-aliceblue-managed"}
+                except Exception as he:
+                    pass
+                    # Ignore history fetch errors, assume PLACED
+                
+                return _live_response(order_id, price, "live-aliceblue-managed")
+            raise Exception("AliceBlue managed order returned no order ID")
 
         elif "angel" in broker_name:
             from services.brokers.angel_client import AngelClient
@@ -215,7 +255,7 @@ async def _route_for_managed_user_broker(
 
     except Exception as e:
         logger.warning("[mirror] Live order failed for managed user %s (%s): %s", mu.id, b.broker, e)
-        return {"status": "rejected", "fill_price": price, "mode": "failed"}
+        return {"status": "rejected", "fill_price": price, "mode": "failed", "reject_reason": str(e)}
 
 
 # ---------------------------------------------------------------------------
@@ -230,8 +270,11 @@ async def mirror_order_to_managed_users(db, trader_id: str, master_order: Order)
     try:
         eligible: list[tuple[ManagedUser, ManagedUserBroker]] = []
 
-        async for doc in db.managed_users.find({"trader_id": trader_id}):
-            mu = ManagedUser.from_mongo(doc)
+        session = AsyncSessionLocal()
+        res = await session.execute(select(ManagedUser).where(ManagedUser.trader_id == trader_id))
+        managed_users = res.scalars().all()
+        await session.close()
+        for mu in managed_users:
 
             # Gate 1: place_order must be True
             if not mu.place_order:
@@ -243,7 +286,8 @@ async def mirror_order_to_managed_users(db, trader_id: str, master_order: Order)
                 logger.info("[mirror] SKIP user=%s name=%s — account_status=%s", mu.id, mu.name, mu.account_status)
                 continue
 
-            brokers = getattr(mu, "brokers", [])
+            brokers = getattr(mu, "brokers", []) or []
+            brokers = [ManagedUserBroker(**b) if isinstance(b, dict) else b for b in brokers]
 
             # Handle legacy single-broker format
             if not brokers and hasattr(mu, "broker") and getattr(mu, "broker"):
@@ -282,6 +326,10 @@ async def mirror_order_to_managed_users(db, trader_id: str, master_order: Order)
         logger.info("[mirror] Dispatching to %d managed user/broker combos for trader=%s", len(eligible), trader_id)
 
         async def _place_for_user(mu: ManagedUser, b: ManagedUserBroker):
+            import uuid
+            fill = {}
+            error_reason = ""
+            
             try:
                 fill = await _route_for_managed_user_broker(
                     db, mu, b,
@@ -293,44 +341,58 @@ async def mirror_order_to_managed_users(db, trader_id: str, master_order: Order)
                     product=master_order.product,
                     force_mock=(master_order.broker == "mock")
                 )
-                mirrored = Order(
-                    user_id=mu.id,
-                    broker=b.broker,
-                    symbol=master_order.symbol,
-                    side=master_order.side,
-                    qty=master_order.qty,
-                    price=fill.get("fill_price", master_order.price),
-                    order_type=master_order.order_type,
-                    product=master_order.product,
-                    status=fill.get("status", "FILLED"),
-                    source="mirrored",
-                    filled_at=datetime.now(timezone.utc),
-                    pnl=0.0,
-                )
-                await db.orders.insert_one(mirrored.to_mongo())
-                logger.info(
-                    "[mirror] ✅ Order placed for managed user=%s name=%s broker=%s — %s @ ₹%s",
-                    mu.id, mu.name, b.broker, master_order.side, fill.get("fill_price", master_order.price)
-                )
-
-                # Notify the managed user
-                from models import Notification
-                notif = Notification(
-                    user_id=mu.id, kind="order",
-                    title=f"Order executed: {mirrored.side} {mirrored.symbol}",
-                    message=(
-                        f"{mirrored.qty} @ ₹{mirrored.price} via {b.broker} "
-                        f"({fill.get('mode', 'managed')})"
-                    ),
-                    severity="success",
-                )
-                await db.notifications.insert_one(notif.to_mongo())
-
             except Exception as e:
-                logger.error(
-                    "[mirror] ❌ Failed for managed user=%s name=%s broker=%s: %s",
-                    mu.id, mu.name, b.broker, e
-                )
+                logger.error("[mirror] Failed for managed user=%s name=%s broker=%s: %s", mu.id, mu.name, b.broker, e)
+                error_reason = str(e)
+                fill = {"status": "REJECTED", "fill_price": master_order.price, "mode": "failed"}
+
+            status = fill.get("status", "FILLED").upper()
+            if error_reason and status != "REJECTED":
+                status = "REJECTED"
+
+            mirrored = Order(
+                id=str(uuid.uuid4()),
+                user_id=mu.id,
+                broker=b.broker,
+                symbol=master_order.symbol,
+                side=master_order.side,
+                qty=master_order.qty,
+                price=fill.get("fill_price", master_order.price),
+                order_type=master_order.order_type,
+                product=master_order.product,
+                status=status,
+                source="mirrored",
+                placed_at=datetime.now(timezone.utc),
+                filled_at=datetime.now(timezone.utc) if status == "FILLED" else None,
+                reject_reason=error_reason or fill.get("reject_reason") or fill.get("mode", ""),
+                is_mock=master_order.is_mock
+            )
+            
+            from models import Notification
+            notif = Notification(
+                id=str(uuid.uuid4()),
+                user_id=mu.id, kind="order",
+                title=f"Order {status}: {mirrored.side} {mirrored.symbol}",
+                message=(
+                    f"{mirrored.qty} @ ₹{mirrored.price} via {b.broker} "
+                    f"({fill.get('mode', 'managed')})"
+                ) + (f" - Reason: {error_reason}" if error_reason else ""),
+                severity="success" if status == "FILLED" else "error",
+                created_at=datetime.now(timezone.utc),
+                read=False
+            )
+
+            # Save strictly using a fresh SQLAlchemy session
+            save_session = AsyncSessionLocal()
+            try:
+                save_session.add(mirrored)
+                save_session.add(notif)
+                await save_session.commit()
+                logger.info("[mirror] Order placed for user=%s name=%s broker=%s - STATUS: %s", mu.id, mu.name, b.broker, status)
+            except Exception as se:
+                logger.error("[mirror] DB save failed for user=%s: %s", mu.id, se)
+            finally:
+                await save_session.close()
 
         await asyncio.gather(*[_place_for_user(mu, b) for mu, b in eligible])
 
@@ -345,8 +407,11 @@ async def mirror_order_to_managed_users(db, trader_id: str, master_order: Order)
 async def get_eligibility_report(db, trader_id: str) -> list[dict]:
     """Return per-user eligibility breakdown for the trader UI."""
     report = []
-    async for doc in db.managed_users.find({"trader_id": trader_id}):
-        mu = ManagedUser.from_mongo(doc)
+    session = AsyncSessionLocal()
+    res = await session.execute(select(ManagedUser).where(ManagedUser.trader_id == trader_id))
+    managed_users = res.scalars().all()
+    await session.close()
+    for mu in managed_users:
         user_entry = {
             "id": mu.id,
             "name": mu.name,
@@ -363,7 +428,8 @@ async def get_eligibility_report(db, trader_id: str) -> list[dict]:
         elif mu.account_status != "active":
             user_entry["skip_reason"] = f"account_status is {mu.account_status}"
         else:
-            brokers = getattr(mu, "brokers", [])
+            brokers = getattr(mu, "brokers", []) or []
+            brokers = [ManagedUserBroker(**b) if isinstance(b, dict) else b for b in brokers]
             all_broker_issues = []
             has_eligible = False
             for b in brokers:

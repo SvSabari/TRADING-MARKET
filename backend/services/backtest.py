@@ -1,93 +1,182 @@
-"""Real backtester that reads captured Parquet files.
+"""Real backtester that reads captured MySQL tick data.
 
-Algorithm: read all 5-second OHLCV rows for `symbol` within the last
-`period_days`, resample to a per-strategy candle (default 1-minute),
-run the strategy's signal generator, simulate marketable orders at the
-next bar's open, and report metrics + equity curve.
+Trade Modes (passed via params["trade_mode"]):
+  - "NONE"  -> Stock / Index: trade the underlying price directly, no options.
+  - "AUTO"  -> Options Automatic: CE on bullish signal (+1), PE on bearish signal (-1).
+  - "CE"    -> Force Call (CE): every option leg is CE regardless of signal direction.
+  - "PE"    -> Force Put  (PE): every option leg is PE regardless of signal direction.
 
-When no parquet data is available for the requested symbol, falls back
-to a synthetic walk-forward simulation so the UI never breaks.
+Option prices come ONLY from the option_candles MySQL table.
+If data is missing, the trade is logged with entry_source="NO DATA" and pnl=0.
+No simulation, no estimated price, no fallback arithmetic.
 """
 from __future__ import annotations
 
+import asyncio
+import concurrent.futures
 import math
-import os
-import random
-from datetime import datetime, timezone, timedelta
-from pathlib import Path
-from typing import Dict, List
+import logging
+from datetime import datetime, timedelta
+from typing import Dict, List, Optional
 
 import pandas as pd
 
-from db import sync_db
+from db import AsyncSessionLocal
+from sqlalchemy import select, func, desc, and_
+from models import MarketCandle, OptionCandle
+from services.sim_state import SimState
 
-def _load_symbol_data(symbol: str, period_days: int) -> pd.DataFrame:
-    """Fetch historical tick data from MongoDB.
-    Loads up to period_days of distinct trading days from market_candles.
-    If fewer days are available, returns what exists.
-    """
-    # Get all distinct available dates for this symbol (most recent first)
-    pipeline = [
-        {"$match": {"symbol": symbol.upper()}},
-        {"$project": {"date": {"$dateToString": {"format": "%Y-%m-%d", "date": "$ts"}}}},
-        {"$group": {"_id": "$date"}},
-        {"$sort": {"_id": -1}},
-        {"$limit": period_days}
-    ]
+logger = logging.getLogger("backtest")
 
-    dates = list(sync_db.market_candles.aggregate(pipeline))
+# ---------------------------------------------------------------------------
+# Data loading
+# ---------------------------------------------------------------------------
 
-    if not dates:
+async def _load_symbol_data(symbol: str, period_days: int) -> pd.DataFrame:
+    """Fetch historical MarketCandle rows from MySQL for the given symbol."""
+    try:
+        async with AsyncSessionLocal() as session:
+            stmt_dates = (
+                select(func.date(MarketCandle.ts).label("day"))
+                .where(MarketCandle.symbol == symbol.upper())
+                .distinct()
+                .order_by(desc("day"))
+                .limit(period_days)
+            )
+            result = await session.execute(stmt_dates)
+            dates = sorted([str(row[0]) for row in result.fetchall()])
+            if not dates:
+                return pd.DataFrame()
+
+            available_days = len(dates)
+            missing_days = max(0, period_days - available_days)
+            if missing_days > 0:
+                logger.info(
+                    "Requested %d days for %s, only %d days available in DB.",
+                    period_days, symbol, available_days
+                )
+
+            start_time = datetime.strptime(dates[0], "%Y-%m-%d")
+            end_time = datetime.strptime(dates[-1], "%Y-%m-%d").replace(
+                hour=23, minute=59, second=59
+            )
+
+            stmt_candles = (
+                select(MarketCandle)
+                .where(
+                    MarketCandle.symbol == symbol.upper(),
+                    MarketCandle.ts >= start_time,
+                    MarketCandle.ts <= end_time,
+                )
+                .order_by(MarketCandle.ts)
+            )
+            result2 = await session.execute(stmt_candles)
+            rows = result2.scalars().all()
+            if not rows:
+                return pd.DataFrame()
+
+            docs = [
+                {"ts": r.ts, "open": r.open, "high": r.high,
+                 "low": r.low, "close": r.close, "volume": r.volume}
+                for r in rows
+            ]
+            df = pd.DataFrame(docs)
+            df["ts"] = pd.to_datetime(df["ts"], errors="coerce")
+            df = df.dropna(subset=["ts"]).sort_values("ts").reset_index(drop=True)
+            return df
+
+    except Exception as e:
+        logger.error("_load_symbol_data error: %s", e)
         return pd.DataFrame()
 
-    dates = sorted([d["_id"] for d in dates])
-    start_date_str = dates[0]
-    end_date_str = dates[-1]
 
-    # How many days are we missing vs what was requested?
-    available_days = len(dates)
-    missing_days = max(0, period_days - available_days)
-    if missing_days > 0:
-        import logging
-        logging.getLogger("backtest").info(
-            f"Requested {period_days} days for {symbol}, "
-            f"only {available_days} days available in DB. "
-            f"Missing {missing_days} days of data."
-        )
+import os
+import pandas as pd
 
-    # No timezone: market_candles timestamps are stored as naive IST datetimes
-    start_time = datetime.strptime(start_date_str, "%Y-%m-%d")
-    end_time = datetime.strptime(end_date_str, "%Y-%m-%d").replace(hour=23, minute=59, second=59)
+def _read_parquet_premium(symbol: str, strike: float, opt_type: str, ts_utc: datetime, window_seconds: int = 1800):
+    try:
+        date_str = ts_utc.strftime("%Y-%m-%d")
+        file_path = os.path.join(os.path.dirname(__file__), "..", "data", "options_history", f"{symbol}_options_{date_str}.parquet")
+        if not os.path.exists(file_path):
+            return None, None
+            
+        df = pd.read_parquet(file_path)
+        if 'timestamp' not in df.columns: return None, None
+        
+        # Ensure UTC
+        if df['timestamp'].dt.tz is None:
+            df['timestamp'] = df['timestamp'].dt.tz_localize('UTC')
+        else:
+            df['timestamp'] = df['timestamp'].dt.tz_convert('UTC')
+            
+        if ts_utc.tzinfo is None:
+            ts_utc = ts_utc.replace(tzinfo=timezone.utc)
+            
+        # Filter for future timestamps
+        future_df = df[df['timestamp'] >= ts_utc]
+        if future_df.empty: return None, None
+        
+        # Exact strike
+        exact_df = future_df[future_df['strike'] == float(strike)]
+        if not exact_df.empty:
+            row = exact_df.iloc[0]
+            if (row['timestamp'] - ts_utc).total_seconds() <= window_seconds:
+                ltp = float(row['ce_ltp']) if opt_type.upper() == "CE" else float(row['pe_ltp'])
+                if ltp > 0: return ltp, "REAL_EXACT"
+                    
+        # Fallback
+        row = future_df.iloc[0]
+        if (row['timestamp'] - ts_utc).total_seconds() <= window_seconds:
+            ltp = float(row['ce_ltp']) if opt_type.upper() == "CE" else float(row['pe_ltp'])
+            if ltp > 0: return ltp, "REAL_FALLBACK"
+                
+    except Exception as e:
+        logger.error(f"Parquet read error: {e}")
+    return None, None
 
-    cursor = sync_db.market_candles.find({
-        "symbol": symbol.upper(),
-        "ts": {"$gte": start_time, "$lte": end_time}
-    }).sort("ts", 1)
+async def _fetch_option_premium(
+    symbol: str,
+    strike: float,
+    opt_type: str,
+    ts_utc: datetime,
+    window_seconds: int = 1800,
+) -> tuple:
+    ltp, source = _read_parquet_premium(symbol, strike, opt_type, ts_utc, window_seconds)
+    if ltp is not None:
+        return ltp, strike, "N/A", source
+    return None, None, None, "NO DATA"
 
-    docs = list(cursor)
-    if not docs:
-        return pd.DataFrame()
+async def _fetch_exit_premium(
+    symbol: str,
+    strike: float,
+    opt_type: str,
+    ts_utc: datetime,
+    window_seconds: int = 1800,
+) -> tuple:
+    ltp, source = _read_parquet_premium(symbol, strike, opt_type, ts_utc, window_seconds)
+    if ltp is not None:
+        return ltp, source
+    return None, "NO DATA"
 
-    df = pd.DataFrame(docs)
-    # Keep as naive (IST) — don't relabel as UTC
-    df["ts"] = pd.to_datetime(df["ts"], errors="coerce")
-    df = df.dropna(subset=["ts"]).sort_values("ts").reset_index(drop=True)
-    return df
 
 
+# ---------------------------------------------------------------------------
+# Resample
+# ---------------------------------------------------------------------------
 
 def _resample(df: pd.DataFrame, rule: str = "1min") -> pd.DataFrame:
     if df.empty:
         return df
     df = df.set_index("ts")
-    agg = df.resample(rule).agg({
-        "open": "first", "high": "max", "low": "min",
-        "close": "last", "volume": "sum",
-    }).dropna().reset_index()
+    agg = df.resample(rule).agg(
+        {"open": "first", "high": "max", "low": "min", "close": "last", "volume": "sum"}
+    ).dropna().reset_index()
     return agg
 
 
-# ---- strategy signal generators on a DataFrame ----
+# ---------------------------------------------------------------------------
+# Strategy signal generators
+# ---------------------------------------------------------------------------
 
 def _ema(values: pd.Series, period: int) -> pd.Series:
     return values.ewm(span=period, adjust=False).mean()
@@ -137,7 +226,9 @@ def _signals_smart_money(df: pd.DataFrame, params: Dict) -> pd.Series:
     if len(df) < 20:
         return pd.Series([0] * len(df), index=df.index)
     ret = df["close"].pct_change()
-    vol_z = (df["volume"] - df["volume"].rolling(20).mean()) / (df["volume"].rolling(20).std().replace(0, 1))
+    vol_z = (df["volume"] - df["volume"].rolling(20).mean()) / (
+        df["volume"].rolling(20).std().replace(0, 1)
+    )
     sig = pd.Series(0, index=df.index)
     sig[(ret > 0.001) & (vol_z > 1.5)] = 1
     sig[(ret < -0.001) & (vol_z > 1.5)] = -1
@@ -160,73 +251,7 @@ def _signals_gamma_scalping(df: pd.DataFrame, params: Dict) -> pd.Series:
     return sig
 
 
-# ---- NEW CREATIVE STRATEGIES ----
-
-def _signals_pyro_algo(df: pd.DataFrame, params: Dict) -> pd.Series:
-    """PYRO ALGO: Stochastic crossover combined with SuperTrend."""
-    if len(df) < 50:
-        return pd.Series([0] * len(df), index=df.index)
-    
-    # Supertrend (10, 2.0)
-    period = int(params.get("st_period", 10))
-    multiplier = float(params.get("st_mult", 2.0))
-    tr = pd.concat([
-        df["high"] - df["low"],
-        (df["high"] - df["close"].shift(1)).abs(),
-        (df["low"] - df["close"].shift(1)).abs(),
-    ], axis=1).max(axis=1)
-    atr = tr.rolling(period).mean()
-    hl2 = (df["high"] + df["low"]) / 2
-    upper = hl2 + multiplier * atr
-    lower = hl2 - multiplier * atr
-    direction = pd.Series(1, index=df.index)
-    
-    # Needs a loop to properly calculate supertrend bands
-    for i in range(period, len(df)):
-        prev_upper = upper.iloc[i - 1]
-        prev_lower = lower.iloc[i - 1]
-        upper.iloc[i] = upper.iloc[i] if upper.iloc[i] < prev_upper or df["close"].iloc[i - 1] > prev_upper else prev_upper
-        lower.iloc[i] = lower.iloc[i] if lower.iloc[i] > prev_lower or df["close"].iloc[i - 1] < prev_lower else prev_lower
-        if direction.iloc[i - 1] == -1 and df["close"].iloc[i] > upper.iloc[i - 1]:
-            direction.iloc[i] = 1
-        elif direction.iloc[i - 1] == 1 and df["close"].iloc[i] < lower.iloc[i - 1]:
-            direction.iloc[i] = -1
-        else:
-            direction.iloc[i] = direction.iloc[i - 1]
-            
-    # Stochastic (K=14, D=3, smoothK=3)
-    k_period = int(params.get("k", 14))
-    d_period = int(params.get("d", 3))
-    smooth_k = int(params.get("smooth", 3))
-    
-    lowest_low = df["low"].rolling(k_period).min()
-    highest_high = df["high"].rolling(k_period).max()
-    
-    # Global Stochastic Calculations (Scaled)
-    limit_highest = df["high"].rolling(20).max()
-    limit_lowest = df["low"].rolling(20).min()
-    
-    stoch_range = (highest_high - lowest_low).replace(0, 1e-6)
-    
-    # Scale the close price position inside the 14-period range into the 20-period range
-    stoch = limit_lowest + (limit_highest - limit_lowest) * (df["close"] - lowest_low) / stoch_range
-    
-    k = stoch.rolling(smooth_k).mean()
-    d = k.rolling(d_period).mean()
-    
-    cross_up = (k.shift(1) <= d.shift(1)) & (k > d)
-    cross_dn = (k.shift(1) >= d.shift(1)) & (k < d)
-    
-    sig = pd.Series(0, index=df.index)
-    # Long when stoch crosses up AND supertrend is bullish
-    sig[cross_up & (direction == 1)] = 1
-    # Short when stoch crosses down AND supertrend is bearish
-    sig[cross_dn & (direction == -1)] = -1
-    return sig
-
-
 def _signals_supertrend(df: pd.DataFrame, params: Dict) -> pd.Series:
-    """Supertrend: Buy when price closes above supertrend line, Sell below."""
     if len(df) < 14:
         return pd.Series([0] * len(df), index=df.index)
     period = int(params.get("period", 10))
@@ -240,8 +265,7 @@ def _signals_supertrend(df: pd.DataFrame, params: Dict) -> pd.Series:
     hl2 = (df["high"] + df["low"]) / 2
     upper = hl2 + multiplier * atr
     lower = hl2 - multiplier * atr
-    supertrend = pd.Series(0.0, index=df.index)
-    direction = pd.Series(1, index=df.index)  # 1=bullish, -1=bearish
+    direction = pd.Series(1, index=df.index)
     for i in range(period, len(df)):
         prev_upper = upper.iloc[i - 1]
         prev_lower = lower.iloc[i - 1]
@@ -254,15 +278,12 @@ def _signals_supertrend(df: pd.DataFrame, params: Dict) -> pd.Series:
         else:
             direction.iloc[i] = direction.iloc[i - 1]
     sig = pd.Series(0, index=df.index)
-    cross_up = (direction.shift(1) == -1) & (direction == 1)
-    cross_dn = (direction.shift(1) == 1) & (direction == -1)
-    sig[cross_up] = 1
-    sig[cross_dn] = -1
+    sig[(direction.shift(1) == -1) & (direction == 1)] = 1
+    sig[(direction.shift(1) == 1) & (direction == -1)] = -1
     return sig
 
 
 def _signals_rsi_divergence(df: pd.DataFrame, params: Dict) -> pd.Series:
-    """RSI strategy: Buy on oversold (<30), Sell on overbought (>70)."""
     if len(df) < 15:
         return pd.Series([0] * len(df), index=df.index)
     period = int(params.get("period", 14))
@@ -276,15 +297,12 @@ def _signals_rsi_divergence(df: pd.DataFrame, params: Dict) -> pd.Series:
     sig = pd.Series(0, index=df.index)
     sig[(rsi.shift(1) < oversold) & (rsi >= oversold)] = 1
     sig[(rsi.shift(1) > overbought) & (rsi <= overbought)] = -1
-    
-    # Close at median (50)
     sig[(rsi.shift(1) < 50) & (rsi >= 50)] = 2
     sig[(rsi.shift(1) > 50) & (rsi <= 50)] = 2
     return sig
 
 
 def _signals_macd_crossover(df: pd.DataFrame, params: Dict) -> pd.Series:
-    """MACD: Buy when MACD crosses above signal line, Sell when crosses below."""
     if len(df) < 35:
         return pd.Series([0] * len(df), index=df.index)
     fast = int(params.get("fast", 12))
@@ -294,16 +312,13 @@ def _signals_macd_crossover(df: pd.DataFrame, params: Dict) -> pd.Series:
     ema_slow = _ema(df["close"], slow)
     macd = ema_fast - ema_slow
     signal_line = macd.ewm(span=signal_p, adjust=False).mean()
-    cross_up = (macd.shift(1) <= signal_line.shift(1)) & (macd > signal_line)
-    cross_dn = (macd.shift(1) >= signal_line.shift(1)) & (macd < signal_line)
     sig = pd.Series(0, index=df.index)
-    sig[cross_up] = 1
-    sig[cross_dn] = -1
+    sig[(macd.shift(1) <= signal_line.shift(1)) & (macd > signal_line)] = 1
+    sig[(macd.shift(1) >= signal_line.shift(1)) & (macd < signal_line)] = -1
     return sig
 
 
 def _signals_bollinger_band(df: pd.DataFrame, params: Dict) -> pd.Series:
-    """Bollinger Bands: Buy at lower band touch, Sell at upper band touch."""
     if len(df) < 20:
         return pd.Series([0] * len(df), index=df.index)
     period = int(params.get("period", 20))
@@ -313,22 +328,18 @@ def _signals_bollinger_band(df: pd.DataFrame, params: Dict) -> pd.Series:
     upper = sma + std_mult * std
     lower = sma - std_mult * std
     sig = pd.Series(0, index=df.index)
-    sig[df["close"] <= lower] = 1   # buy at lower band
-    sig[df["close"] >= upper] = -1  # short at upper band
-    
-    # Close at median (SMA)
+    sig[df["close"] <= lower] = 1
+    sig[df["close"] >= upper] = -1
     sig[(df["close"].shift(1) < sma) & (df["close"] >= sma)] = 2
     sig[(df["close"].shift(1) > sma) & (df["close"] <= sma)] = 2
     return sig
 
 
 def _signals_opening_range_breakout(df: pd.DataFrame, params: Dict) -> pd.Series:
-    """ORB: Buy if price breaks above first N-bar high after open."""
     if len(df) < 20:
         return pd.Series([0] * len(df), index=df.index)
-    orb_bars = int(params.get("orb_bars", 15))  # first 15 minutes at 1min bars
+    orb_bars = int(params.get("orb_bars", 15))
     sig = pd.Series(0, index=df.index)
-    # Group by date
     if "ts" in df.columns:
         df = df.copy()
         df["date"] = pd.to_datetime(df["ts"]).dt.date
@@ -346,7 +357,6 @@ def _signals_opening_range_breakout(df: pd.DataFrame, params: Dict) -> pd.Series
 
 
 def _signals_volume_spike_breakout(df: pd.DataFrame, params: Dict) -> pd.Series:
-    """Volume Spike: Buy when volume is 3x average AND price makes new high."""
     if len(df) < 20:
         return pd.Series([0] * len(df), index=df.index)
     vol_mult = float(params.get("vol_multiplier", 3.0))
@@ -362,40 +372,33 @@ def _signals_volume_spike_breakout(df: pd.DataFrame, params: Dict) -> pd.Series:
 
 
 def _signals_gap_and_go(df: pd.DataFrame, params: Dict) -> pd.Series:
-    """Gap & Go: Buy stocks that gap up significantly from previous close."""
     if len(df) < 2:
         return pd.Series([0] * len(df), index=df.index)
-    gap_pct = float(params.get("gap_pct", 0.015))  # 1.5% gap
+    gap_pct = float(params.get("gap_pct", 0.015))
     sig = pd.Series(0, index=df.index)
     gap_up = (df["open"] - df["close"].shift(1)) / df["close"].shift(1)
     gap_dn = (df["close"].shift(1) - df["open"]) / df["close"].shift(1)
-    # Buy the gap up if price continues higher in first bar
     sig[(gap_up > gap_pct) & (df["close"] > df["open"])] = 1
-    # Sell the gap down if price continues lower
     sig[(gap_dn > gap_pct) & (df["close"] < df["open"])] = -1
     return sig
 
 
 def _signals_donchian_breakout(df: pd.DataFrame, params: Dict) -> pd.Series:
-    """Donchian Breakout: Buy when price breaks N-period high, sell on N-period low."""
     if len(df) < 20:
         return pd.Series([0] * len(df), index=df.index)
     period = int(params.get("period", 20))
     upper = df["high"].rolling(period).max()
     lower = df["low"].rolling(period).min()
+    sma_fast = df["close"].rolling(10).mean()
     sig = pd.Series(0, index=df.index)
     sig[df["close"] > upper.shift(1)] = 1
     sig[df["close"] < lower.shift(1)] = -1
-    
-    # Close when crossing median MA
-    sma_fast = df["close"].rolling(10).mean()
     sig[(df["close"].shift(1) < sma_fast) & (df["close"] >= sma_fast)] = 2
     sig[(df["close"].shift(1) > sma_fast) & (df["close"] <= sma_fast)] = 2
     return sig
 
 
 def _signals_zscore_reversion(df: pd.DataFrame, params: Dict) -> pd.Series:
-    """Z-Score Reversion: Buy when z-score < -2, sell when z-score > 2."""
     if len(df) < 20:
         return pd.Series([0] * len(df), index=df.index)
     period = int(params.get("period", 20))
@@ -406,12 +409,11 @@ def _signals_zscore_reversion(df: pd.DataFrame, params: Dict) -> pd.Series:
     sig = pd.Series(0, index=df.index)
     sig[z_score < -entry_z] = 1
     sig[z_score > entry_z] = -1
-    sig[z_score.abs() < 0.2] = 2  # Close when near zero
+    sig[z_score.abs() < 0.2] = 2
     return sig
 
 
 def _signals_keltner_channel(df: pd.DataFrame, params: Dict) -> pd.Series:
-    """Keltner Channel: Breakout strategy using ATR channels."""
     if len(df) < 20:
         return pd.Series([0] * len(df), index=df.index)
     period = int(params.get("period", 20))
@@ -428,17 +430,60 @@ def _signals_keltner_channel(df: pd.DataFrame, params: Dict) -> pd.Series:
     sig = pd.Series(0, index=df.index)
     sig[df["close"] > upper] = 1
     sig[df["close"] < lower] = -1
-    
-    # Close at median (EMA)
     sig[(df["close"].shift(1) < ema) & (df["close"] >= ema)] = 2
     sig[(df["close"].shift(1) > ema) & (df["close"] <= ema)] = 2
     return sig
 
 
+def _signals_pyro_algo(df: pd.DataFrame, params: Dict) -> pd.Series:
+    if len(df) < 50:
+        return pd.Series([0] * len(df), index=df.index)
+    period = int(params.get("st_period", 10))
+    multiplier = float(params.get("st_mult", 2.0))
+    tr = pd.concat([
+        df["high"] - df["low"],
+        (df["high"] - df["close"].shift(1)).abs(),
+        (df["low"] - df["close"].shift(1)).abs(),
+    ], axis=1).max(axis=1)
+    atr = tr.rolling(period).mean()
+    hl2 = (df["high"] + df["low"]) / 2
+    upper = hl2 + multiplier * atr
+    lower = hl2 - multiplier * atr
+    direction = pd.Series(1, index=df.index)
+    for i in range(period, len(df)):
+        prev_upper = upper.iloc[i - 1]
+        prev_lower = lower.iloc[i - 1]
+        upper.iloc[i] = upper.iloc[i] if upper.iloc[i] < prev_upper or df["close"].iloc[i - 1] > prev_upper else prev_upper
+        lower.iloc[i] = lower.iloc[i] if lower.iloc[i] > prev_lower or df["close"].iloc[i - 1] < prev_lower else prev_lower
+        if direction.iloc[i - 1] == -1 and df["close"].iloc[i] > upper.iloc[i - 1]:
+            direction.iloc[i] = 1
+        elif direction.iloc[i - 1] == 1 and df["close"].iloc[i] < lower.iloc[i - 1]:
+            direction.iloc[i] = -1
+        else:
+            direction.iloc[i] = direction.iloc[i - 1]
+    k_period = int(params.get("k", 14))
+    d_period = int(params.get("d", 3))
+    smooth_k = int(params.get("smooth", 3))
+    lowest_low = df["low"].rolling(k_period).min()
+    highest_high = df["high"].rolling(k_period).max()
+    limit_highest = df["high"].rolling(20).max()
+    limit_lowest = df["low"].rolling(20).min()
+    stoch_range = (highest_high - lowest_low).replace(0, 1e-6)
+    stoch = limit_lowest + (limit_highest - limit_lowest) * (df["close"] - lowest_low) / stoch_range
+    k = stoch.rolling(smooth_k).mean()
+    d = k.rolling(d_period).mean()
+    cross_up = (k.shift(1) <= d.shift(1)) & (k > d)
+    cross_dn = (k.shift(1) >= d.shift(1)) & (k < d)
+    sig = pd.Series(0, index=df.index)
+    sig[cross_up & (direction == 1)] = 1
+    sig[cross_dn & (direction == -1)] = -1
+    return sig
+
 
 _SIG_MAP = {
     "pyro_algo": _signals_pyro_algo,
     "ema_crossover": _signals_ema_crossover,
+    "EMA Crossover": _signals_ema_crossover,
     "vwap_scalping": _signals_vwap_scalping,
     "oi_breakout": _signals_oi_breakout,
     "smart_money": _signals_smart_money,
@@ -455,179 +500,138 @@ _SIG_MAP = {
     "keltner_channel": _signals_keltner_channel,
 }
 
+import os
+from datetime import timezone
 
-from services.sim_state import SimState
+# ---------------------------------------------------------------------------
+# Trade mode helpers
+# ---------------------------------------------------------------------------
 
+def _resolve_opt_type(trade_mode: str, signal: int) -> str:
+    if trade_mode == "AUTO":
+        return "CE" if signal == 1 else "PE"
+    return trade_mode  # "CE" or "PE"
+
+def _ts_to_utc(ts_str: str) -> datetime:
+    try:
+        dt = datetime.fromisoformat(ts_str.replace("Z", "+00:00")).replace(tzinfo=None)
+    except Exception:
+        dt = datetime.fromisoformat(str(ts_str))
+    return dt
+
+# ---------------------------------------------------------------------------
+# Parquet OHLC Caching
+# ---------------------------------------------------------------------------
+
+_PARQUET_CACHE = {}
+
+def _load_options_ohlc_for_day(symbol: str, date_str: str) -> pd.DataFrame:
+    cache_key = f"{symbol}_{date_str}"
+    if cache_key in _PARQUET_CACHE:
+        return _PARQUET_CACHE[cache_key]
+        
+    file_path = os.path.join(os.path.dirname(__file__), "..", "data", "options_history", f"{symbol}_options_{date_str}.parquet")
+    if not os.path.exists(file_path):
+        _PARQUET_CACHE[cache_key] = pd.DataFrame()
+        return _PARQUET_CACHE[cache_key]
+        
+    try:
+        df = pd.read_parquet(file_path)
+        if df.empty or 'timestamp' not in df.columns:
+            _PARQUET_CACHE[cache_key] = pd.DataFrame()
+            return _PARQUET_CACHE[cache_key]
+            
+        # Ensure naive UTC
+        if df['timestamp'].dt.tz is not None:
+            df['timestamp'] = df['timestamp'].dt.tz_convert('UTC').dt.tz_localize(None)
+            
+        df['strike'] = pd.to_numeric(df['strike'], errors='coerce')
+        df = df.dropna(subset=['strike'])
+        
+        df.set_index('timestamp', inplace=True)
+        
+        ohlc = df.groupby('strike').resample('1min').agg({
+            'ce_ltp': ['first', 'max', 'min', 'last'],
+            'pe_ltp': ['first', 'max', 'min', 'last']
+        }).reset_index()
+        
+        ohlc.columns = ['strike', 'timestamp', 
+                        'ce_open', 'ce_high', 'ce_low', 'ce_close',
+                        'pe_open', 'pe_high', 'pe_low', 'pe_close']
+                        
+        _PARQUET_CACHE[cache_key] = ohlc
+        return ohlc
+    except Exception as e:
+        logger.error(f"OHLC Parquet load error: {e}")
+        _PARQUET_CACHE[cache_key] = pd.DataFrame()
+        return _PARQUET_CACHE[cache_key]
+
+async def _fetch_option_premium(symbol: str, spot_price: float, opt_type: str, ts_utc: datetime) -> tuple:
+    date_str = ts_utc.strftime("%Y-%m-%d")
+    ohlc = _load_options_ohlc_for_day(symbol, date_str)
+    if ohlc.empty: return None, None, None, "NO DATA"
+    
+    minute_ts = ts_utc.replace(second=0, microsecond=0)
+    minute_df = ohlc[ohlc['timestamp'] == minute_ts]
+    
+    if minute_df.empty: return None, None, None, "NO DATA"
+    
+    minute_df = minute_df.copy()
+    minute_df['diff'] = (minute_df['strike'] - spot_price).abs()
+    closest_row = minute_df.loc[minute_df['diff'].idxmin()]
+    
+    prefix = opt_type.lower()
+    ltp = closest_row[f"{prefix}_close"]
+    if pd.isna(ltp) or ltp <= 0:
+        print(f"[MISSING DATA] Could not fetch entry for {symbol} {opt_type} at {minute_ts} UTC. Available minutes in parquet start at: {ohlc['timestamp'].min()} and end at {ohlc['timestamp'].max()}")
+        return None, None, None, "NO DATA"
+    
+    return ltp, float(closest_row['strike']), None, "REAL_EXACT"
+
+# ---------------------------------------------------------------------------
+# Position open / close
+# ---------------------------------------------------------------------------
 
 def _mark_to_market(state: SimState, bar_close: float) -> float:
-    """Return current equity including open-position MTM."""
     if state.position == 0:
         return state.equity
-    if state.is_index:
-        points_gained = (bar_close - state.index_entry) * state.position
-        current_premium = max(0.05, state.opt_entry_premium + points_gained * 0.5)
-        return state.equity + (current_premium - state.opt_entry_premium) * state.qty
-    else:
-        return state.equity + (bar_close - state.entry_price) * state.qty * state.position
+    if getattr(state, "is_options_trade", False):
+        return state.equity # Accurate MTM requires querying Parquet every minute, skipping to speed up.
+    return state.equity + (bar_close - state.entry_price) * state.qty * state.position
 
-
-def _close_position(state: SimState, fill: float, ts: str, reason: str = "", final: bool = False, exact_premium: float = None) -> None:
-    """Close any open position at `fill`. Updates equity, wins, trades, log."""
-    if state.position == 0:
-        return
-        
-    if getattr(state, 'is_index', False):
-        exit_source_label = "SIMULATED"
-        if exact_premium is not None:
-            exit_premium = exact_premium
-            pnl = (exit_premium - state.opt_entry_premium) * state.qty * state.position
-            exit_source_label = "REAL_EXACT" # SL/Target hit based on entry source
-        else:
-            from db import sync_db
-            import datetime
-            try:
-                ts_dt = datetime.datetime.fromisoformat(ts.replace("Z", "+00:00")).replace(tzinfo=None)
-                ts_dt_utc = ts_dt - datetime.timedelta(hours=5, minutes=30)
-            except:
-                ts_dt_utc = ts
-            # Try exact strike first, then any strike for the same opt_type
-            symbol_for_close = state.trades_log[-1].get("symbol", "NIFTY") if state.trades_log else "NIFTY"
-            query_exact = {
-                "symbol": symbol_for_close,
-                "strike": float(state.opt_strike),
-                "opt_type": state.opt_type,
-                "ts": {"$gte": ts_dt_utc}
-            }
-            if getattr(state, "opt_expiry", None):
-                query_exact["expiry"] = state.opt_expiry
-                
-            opt_doc = sync_db.option_candles.find_one(query_exact, sort=[("ts", 1)])
-            
-            if not opt_doc or (opt_doc["ts"] - ts_dt_utc).total_seconds() > 1800:
-                if opt_doc:
-                    print(f"[EXIT] EXACT too far: {symbol_for_close} {state.opt_strike} {state.opt_type} gap={(opt_doc['ts']-ts_dt_utc).total_seconds():.0f}s — trying fallback")
-                else:
-                    print(f"[EXIT] EXACT not found: {symbol_for_close} {state.opt_strike} {state.opt_type} expiry={getattr(state,'opt_expiry',None)} req_ts={ts_dt_utc}")
-                query_fallback = {
-                    "symbol": symbol_for_close,
-                    "opt_type": state.opt_type,
-                    "ts": {"$gte": ts_dt_utc}
-                }
-                opt_doc = sync_db.option_candles.find_one(query_fallback, sort=[("ts", 1)])
-            
-            if opt_doc and (opt_doc["ts"] - ts_dt_utc).total_seconds() <= 1800:
-                exit_premium = float(opt_doc["ltp"])
-                print(f"[EXIT] MATCHED: {symbol_for_close} strike={opt_doc['strike']} {state.opt_type} ts={opt_doc['ts']} expiry={opt_doc.get('expiry')} ltp=₹{opt_doc['ltp']}")
-                pnl = (exit_premium - state.opt_entry_premium) * state.qty * state.position
-                exit_source_label = "REAL_EXACT" if (getattr(state, "opt_expiry", None) and opt_doc.get("expiry") == getattr(state, "opt_expiry", None)) else "REAL_FALLBACK"
-            else:
-                exit_premium = 0
-                print(f"[EXIT] NO DATA: No DB match within 30min for {symbol_for_close} {state.opt_strike} {state.opt_type} req_ts={ts_dt_utc}")
-                pnl = 0
-                exit_source_label = "NO DATA"
-                reason = "MISSING DATA"
-        
-        entry = {
-            "side": "BUY" if state.position == 1 else "SELL",
-            "index_entry": round(state.index_entry, 2),
-            "index_exit": round(fill, 2),
-            "strike": state.opt_strike,
-            "type": state.opt_type,
-            "expiry": getattr(state, "opt_expiry", None),
-            "entry_premium": round(state.opt_entry_premium, 2),
-            "exit_premium": round(exit_premium, 2),
-            "entry_source": getattr(state, "opt_entry_source", "SIMULATED"),
-            "exit_source": exit_source_label,
-            "qty": state.qty if exit_source_label != "NO DATA" else 0,
-            "pnl": round(pnl, 2),
-            "ts": ts,
-            "reason": reason or ("Strategy" if not final else "EOD")
-        }
-    else:
-        pnl = (fill - state.entry_price) * state.qty * state.position
-        entry = {
-            "side": "BUY" if state.position == 1 else "SELL",
-            "entry": round(state.entry_price, 2),
-            "exit": round(fill, 2),
-            "qty": state.qty,
-            "pnl": round(pnl, 2),
-            "ts": ts,
-            "reason": reason or ("Strategy" if not final else "EOD")
-        }
-        
-    state.equity += pnl
-    if reason != "MISSING DATA":
-        state.trades += 1
-        if pnl > 0:
-            state.wins += 1
-    
-    if final:
-        entry["final"] = True
-        
-    state.trades_log.append(entry)
-    state.position = 0
-    state.is_index = False
-
-
-def _open_position(state: SimState, symbol: str, side: int, fill: float, ts_str: str, params: Dict = None) -> None:
-    """Open a new long/short position sized at ~95% of equity, or fixed lot size."""
+async def _open_position(
+    state: SimState,
+    symbol: str,
+    side: int,
+    fill: float,
+    ts_str: str,
+    params: Dict,
+    trade_mode: str,
+) -> None:
     if state.equity <= 0:
         return
-        
-    params = params or {}
+
     fixed_qty = params.get("qty")
+    is_options_trade = trade_mode != "NONE"
     
-    strike_intervals = {"NIFTY": 50, "BANKNIFTY": 100, "FINNIFTY": 50, "SENSEX": 100, "MIDCPNIFTY": 25, "BANKEX": 100}
-    is_index = symbol.upper() in strike_intervals
-    
-    if is_index:
-        interval = strike_intervals[symbol.upper()]
-        rounded_strike = int(round(fill / interval) * interval)
-        opt_type = "CE" if side == 1 else "PE"
+    state.is_options_trade = is_options_trade
+
+    if is_options_trade:
+        opt_type = _resolve_opt_type(trade_mode, side)
+        ts_utc = _ts_to_utc(ts_str)
         
-        # Query MongoDB for real option premium at this timestamp
-        from db import sync_db
-        import datetime
-        try:
-            # market_candles timestamps are stored in IST (naive). Convert to UTC for option_candles lookup.
-            ts_dt = datetime.datetime.fromisoformat(ts_str.replace("Z", "+00:00")).replace(tzinfo=None)
-            ts_dt_utc = ts_dt - datetime.timedelta(hours=5, minutes=30)
-        except:
-            ts_dt_utc = ts_str
+        ltp, actual_strike, actual_expiry, source = await _fetch_option_premium(
+            symbol.upper(), fill, opt_type, ts_utc
+        )
 
-        def _fetch_opt_premium(sym, strike, otype, ts_utc, window_seconds=1800):
-            """Try exact strike, then nearest available strike within 30-min window."""
-            doc = sync_db.option_candles.find_one({
-                "symbol": sym,
-                "strike": float(strike),
-                "opt_type": otype,
-                "ts": {"$gte": ts_utc}
-            }, sort=[("ts", 1)])
-            if doc and (doc["ts"] - ts_utc).total_seconds() <= window_seconds:
-                print(f"[ENTRY] EXACT MATCH: {sym} {strike} {otype} req_ts={ts_utc} -> found ts={doc['ts']} expiry={doc.get('expiry')} ltp=Rs{doc['ltp']}")
-                return float(doc["ltp"]), float(doc["strike"]), doc.get("expiry"), "REAL_EXACT"
-            # No exact strike match – try any available strike nearby to get a realistic premium
-            doc2 = sync_db.option_candles.find_one({
-                "symbol": sym,
-                "opt_type": otype,
-                "ts": {"$gte": ts_utc}
-            }, sort=[("ts", 1)])
-            if doc2 and (doc2["ts"] - ts_utc).total_seconds() <= window_seconds:
-                print(f"[ENTRY] FALLBACK STRIKE: {sym} req_strike={strike} {otype} req_ts={ts_utc} -> found strike={doc2['strike']} ts={doc2['ts']} expiry={doc2.get('expiry')} ltp=Rs{doc2['ltp']}")
-                return float(doc2["ltp"]), float(doc2["strike"]), doc2.get("expiry"), "REAL_FALLBACK"
-            
-            print(f"[ENTRY] NO DATA: {sym} {strike} {otype} req_ts={ts_utc} within {window_seconds}s window")
-            return None, strike, None, "SIMULATED"
-
-        entry_premium, actual_strike, actual_expiry, entry_source = _fetch_opt_premium(symbol.upper(), rounded_strike, opt_type, ts_dt_utc)
-        if entry_premium is None or entry_premium <= 0:
-            print(f"[ENTRY] SKIPPING TRADE: No option data for {symbol.upper()} {rounded_strike} {opt_type} at {ts_dt_utc}")
-            # Add to trade log as a skipped trade
+        if ltp is None or ltp <= 0:
             state.trades_log.append({
+                "mode": trade_mode,
+                "signal": "BUY" if side == 1 else "SELL",
                 "side": "BUY" if side == 1 else "SELL",
                 "index_entry": round(fill, 2),
                 "index_exit": round(fill, 2),
-                "strike": rounded_strike,
+                "strike": 0,
                 "type": opt_type,
                 "expiry": None,
                 "entry_premium": 0,
@@ -637,60 +641,137 @@ def _open_position(state: SimState, symbol: str, side: int, fill: float, ts_str:
                 "qty": 0,
                 "pnl": 0,
                 "ts": ts_str,
-                "reason": "MISSING DATA"
+                "reason": "MISSING DATA",
             })
             return
 
-        
-        state.is_index = True
+        if fixed_qty and int(fixed_qty) > 0:
+            qty = int(fixed_qty)
+        else:
+            qty = max(1, int(state.equity * 0.95 / ltp))
+
+        state.is_index = True # Keep for backwards compatibility with UI
         state.index_entry = fill
         state.opt_strike = actual_strike
         state.opt_type = opt_type
         state.opt_expiry = actual_expiry
-        state.opt_entry_premium = entry_premium
-        state.opt_entry_source = entry_source
-        
-        if fixed_qty and int(fixed_qty) > 0:
-            state.qty = int(fixed_qty)
-        else:
-            state.qty = max(1, int(state.equity * 0.95 / entry_premium))
-            
+        state.opt_entry_premium = ltp
+        state.opt_entry_source = source
         state.position = side
-        state.entry_price = entry_premium # for compatibility
-    else:
-        state.is_index = False
-        if fixed_qty and int(fixed_qty) > 0:
-            state.qty = int(fixed_qty)
-        else:
-            state.qty = max(1, int(state.equity * 0.95 / fill))
-            
-        state.position = side
+        state.qty = qty
         state.entry_price = fill
 
+    else:
+        if fixed_qty and int(fixed_qty) > 0:
+            qty = int(fixed_qty)
+        else:
+            qty = max(1, int(state.equity * 0.95 / fill))
 
-def _simulate(symbol: str, df: pd.DataFrame, signals: pd.Series, params: Dict = None) -> Dict:
-    """Long/short single-position simulator with next-bar-open fills."""
-    params = params or {}
+        state.position = side
+        state.entry_price = fill
+        state.qty = qty
+
+async def _close_position(
+    state: SimState, fill: float, ts_str: str, reason: str = None, exact_premium: float = None, final: bool = False
+) -> None:
+    if state.position == 0:
+        return
+
+    is_options_trade = getattr(state, "is_options_trade", False)
+
+    if is_options_trade:
+        if exact_premium is not None:
+            exit_premium = exact_premium
+            exit_source = "REAL_EXACT"
+        else:
+            ts_utc = _ts_to_utc(ts_str)
+            ltp, _, _, source = await _fetch_option_premium(
+                state._symbol, state.opt_strike, state.opt_type, ts_utc
+            )
+            if ltp is None or ltp <= 0:
+                exit_premium = 0
+                exit_source = "NO DATA"
+                reason = "MISSING DATA"
+            else:
+                exit_premium = ltp
+                exit_source = source
+
+        pnl = (exit_premium - state.opt_entry_premium) * state.qty * state.position if reason != "MISSING DATA" else 0
+
+        trade = {
+            "mode": getattr(state, "_trade_mode", "AUTO"),
+            "side": "BUY" if state.position == 1 else "SELL",
+            "signal_ts": getattr(state, "_signal_ts", ts_str),
+            "index_entry": round(state.index_entry, 2),
+            "index_exit": round(fill, 2),
+            "strike": state.opt_strike,
+            "type": state.opt_type,
+            "expiry": getattr(state, "opt_expiry", None),
+            "entry_premium": round(state.opt_entry_premium, 2),
+            "exit_premium": round(exit_premium, 2),
+            "entry_source": getattr(state, "opt_entry_source", "?"),
+            "exit_source": exit_source,
+            "qty": state.qty if exit_source != "NO DATA" else 0,
+            "pnl": round(pnl, 2),
+            "ts": ts_str,
+            "reason": reason or ("EOD" if final else "Strategy"),
+        }
+    else:
+        pnl = (fill - state.entry_price) * state.qty * state.position
+        trade = {
+            "mode": getattr(state, "_trade_mode", "NONE"),
+            "side": "BUY" if state.position == 1 else "SELL",
+            "signal_ts": getattr(state, "_signal_ts", ts_str),
+            "entry": round(state.entry_price, 2),
+            "exit": round(fill, 2),
+            "qty": state.qty,
+            "pnl": round(pnl, 2),
+            "ts": ts_str,
+            "reason": reason or ("EOD" if final else "Strategy"),
+        }
+
+    state.equity += pnl
+    if reason != "MISSING DATA":
+        state.trades += 1
+        if pnl > 0:
+            state.wins += 1
+
+    if final:
+        trade["final"] = True
+    state.trades_log.append(trade)
+    state.position = 0
+    state.is_options_trade = False
+
+# ---------------------------------------------------------------------------
+# Simulator
+# ---------------------------------------------------------------------------
+
+async def _simulate(
+    symbol: str,
+    df: pd.DataFrame,
+    signals: pd.Series,
+    params: Dict,
+    trade_mode: str,
+) -> Dict:
     sl_pct = float(params.get("stop_loss_pct", 0.01))
     tp_pct = float(params.get("take_profit_pct", 0.02))
-    strike_intervals = {"NIFTY": 50, "BANKNIFTY": 100, "FINNIFTY": 50, "SENSEX": 100, "MIDCPNIFTY": 25, "BANKEX": 100}
-    is_index = symbol.upper() in strike_intervals
-
+    
     if df.empty or len(df) < 3:
         return {"metrics": {}, "equity_curve": [], "trades_log": []}
+
     state = SimState()
-    
-    # Intraday square-off times (UTC). 09:45 UTC = 15:15 IST
+    state._symbol = symbol.upper()
+    state._trade_mode = trade_mode
+
     square_off_times = ["09:45:00", "09:50:00", "09:55:00"]
-    
-    # Pre-extract numpy arrays for fast iteration
+
     sig_vals = signals.values
     close_vals = df["close"].values
     open_vals = df["open"].values
     high_vals = df["high"].values
     low_vals = df["low"].values
     ts_vals = df["ts"].astype(str).values
-    
+
     n = len(df)
     for i in range(n - 1):
         sig = int(sig_vals[i])
@@ -698,70 +779,62 @@ def _simulate(symbol: str, df: pd.DataFrame, signals: pd.Series, params: Dict = 
         eq = _mark_to_market(state, bar_close)
         state.peak = max(state.peak, eq)
         state.max_dd = max(state.max_dd, (state.peak - eq) / state.peak if state.peak else 0)
-        state.curve.append({"t": int(i), "ts": ts_vals[i],
-                             "equity": round(eq, 2), "price": bar_close})
+        state.curve.append({"t": int(i), "ts": ts_vals[i], "equity": round(eq, 2), "price": bar_close})
 
-        # Check Stop-Loss / Take-Profit / Intraday Square-off
         if state.position != 0:
             is_eod = any(t in ts_vals[i] for t in square_off_times)
             bar_high = float(high_vals[i])
             bar_low = float(low_vals[i])
-            
             reason = None
             exact_exit = None
-            
-            if is_index:
-                # Calculate the EXACT exit premium price for Target and SL
+
+            is_options_trade = getattr(state, "is_options_trade", False)
+
+            if is_options_trade:
                 target_price = state.opt_entry_premium * (1 + tp_pct) if state.position == 1 else state.opt_entry_premium * (1 - tp_pct)
                 sl_price = state.opt_entry_premium * (1 - sl_pct) if state.position == 1 else state.opt_entry_premium * (1 + sl_pct)
                 
-                # Estimate the option's intra-candle high and low using delta 0.5 approximation
-                if state.opt_type == "CE":
-                    est_opt_high = state.opt_entry_premium + (bar_high - state.index_entry) * 0.5
-                    est_opt_low = state.opt_entry_premium + (bar_low - state.index_entry) * 0.5
-                else:
-                    est_opt_high = state.opt_entry_premium + (state.index_entry - bar_low) * 0.5
-                    est_opt_low = state.opt_entry_premium + (state.index_entry - bar_high) * 0.5
-                    
-                hit_target = False
-                hit_sl = False
+                # Fetch exact OHLC from parquet for this minute
+                ts_utc = _ts_to_utc(ts_vals[i]).replace(second=0, microsecond=0)
+                date_str = ts_utc.strftime("%Y-%m-%d")
+                ohlc = _load_options_ohlc_for_day(symbol, date_str)
                 
-                if state.position == 1: # BUY
-                    if est_opt_high >= target_price: hit_target = True
-                    if est_opt_low <= sl_price: hit_sl = True
-                else: # SELL
-                    if est_opt_low <= target_price: hit_target = True
-                    if est_opt_high >= sl_price: hit_sl = True
-                    
-                if hit_sl and hit_target:
-                    reason = "SL"
-                    exact_exit = round(sl_price, 2)
-                elif hit_sl:
-                    reason = "SL"
-                    exact_exit = round(sl_price, 2)
-                elif hit_target:
-                    reason = "Target"
-                    exact_exit = round(target_price, 2)
+                opt_high = None
+                opt_low = None
+                
+                if not ohlc.empty:
+                    minute_df = ohlc[(ohlc['timestamp'] == ts_utc) & (ohlc['strike'] == state.opt_strike)]
+                    if not minute_df.empty:
+                        prefix = state.opt_type.lower()
+                        opt_high = minute_df.iloc[0][f"{prefix}_high"]
+                        opt_low = minute_df.iloc[0][f"{prefix}_low"]
+                
+                if opt_high is not None and not pd.isna(opt_high):
+                    hit_target = False
+                    hit_sl = False
+                    if state.position == 1:
+                        if opt_high >= target_price: hit_target = True
+                        if opt_low <= sl_price: hit_sl = True
+                    else:
+                        if opt_low <= target_price: hit_target = True
+                        if opt_high >= sl_price: hit_sl = True
+                        
+                    if hit_sl:
+                        reason = "SL"
+                        exact_exit = round(sl_price, 2)
+                    elif hit_target:
+                        reason = "Target"
+                        exact_exit = round(target_price, 2)
+                    elif is_eod:
+                        reason = "EOD"
                 elif is_eod:
                     reason = "EOD"
             else:
                 target_price = state.entry_price * (1 + tp_pct) if state.position == 1 else state.entry_price * (1 - tp_pct)
                 sl_price = state.entry_price * (1 - sl_pct) if state.position == 1 else state.entry_price * (1 + sl_pct)
-                
-                hit_target = False
-                hit_sl = False
-                
-                if state.position == 1:
-                    if bar_high >= target_price: hit_target = True
-                    if bar_low <= sl_price: hit_sl = True
-                else:
-                    if bar_low <= target_price: hit_target = True
-                    if bar_high >= sl_price: hit_sl = True
-                    
-                if hit_sl and hit_target:
-                    reason = "SL"
-                    exact_exit = round(sl_price, 2)
-                elif hit_sl:
+                hit_target = bar_high >= target_price if state.position == 1 else bar_low <= target_price
+                hit_sl = bar_low <= sl_price if state.position == 1 else bar_high >= sl_price
+                if hit_sl:
                     reason = "SL"
                     exact_exit = round(sl_price, 2)
                 elif hit_target:
@@ -769,11 +842,11 @@ def _simulate(symbol: str, df: pd.DataFrame, signals: pd.Series, params: Dict = 
                     exact_exit = round(target_price, 2)
                 elif is_eod:
                     reason = "EOD"
-                
+
             if reason:
                 fill = float(open_vals[i + 1])
                 if not math.isnan(fill):
-                    _close_position(state, fill, ts_vals[i + 1], reason=reason, exact_premium=exact_exit)
+                    await _close_position(state, fill, ts_vals[i + 1], reason=reason, exact_premium=exact_exit)
                 continue
 
         if sig == 0 or sig == state.position:
@@ -782,20 +855,21 @@ def _simulate(symbol: str, df: pd.DataFrame, signals: pd.Series, params: Dict = 
         if math.isnan(fill):
             continue
         if state.position != 0:
-            _close_position(state, fill, ts_vals[i + 1], reason="Strategy")
+            await _close_position(state, fill, ts_vals[i + 1], reason="Strategy")
         if sig in (1, -1):
-            _open_position(state, symbol, sig, fill, ts_vals[i + 1], params)
+            state._signal_ts = ts_vals[i]
+            await _open_position(state, symbol, sig, fill, ts_vals[i + 1], params, trade_mode)
 
-    # final close on last bar
     last_close = float(close_vals[-1])
     if state.position != 0:
-        _close_position(state, last_close, ts_vals[-1], reason="EOD", final=True)
+        await _close_position(state, last_close, ts_vals[-1], reason="EOD", final=True)
 
     rets = [c["equity"] for c in state.curve]
     pct_rets = [(rets[i] / rets[i - 1] - 1) for i in range(1, len(rets))] if len(rets) > 1 else [0]
     mu = sum(pct_rets) / len(pct_rets)
     sigma = math.sqrt(sum((r - mu) ** 2 for r in pct_rets) / len(pct_rets)) or 1e-6
-    annualised = mu / sigma * math.sqrt(252 * 6.5 * 60)  # 1-min bars
+    annualised = mu / sigma * math.sqrt(252 * 6.5 * 60)
+
     return {
         "metrics": {
             "total_return_pct": round((state.equity / 100000.0 - 1) * 100, 2),
@@ -810,30 +884,57 @@ def _simulate(symbol: str, df: pd.DataFrame, signals: pd.Series, params: Dict = 
         "trades_log": state.trades_log,
     }
 
-
-
-
-def run_backtest(strategy_kind: str, symbol: str, period_days: int, params: Dict | None = None) -> Dict:
+async def run_backtest(strategy_kind: str, symbol: str, period_days: int, params: Dict | None = None) -> Dict:
     params = params or {}
-    df = _load_symbol_data(symbol, period_days)
+
+    raw_trade_options = params.get("trade_options", False)
+    if isinstance(raw_trade_options, str):
+        trade_options = raw_trade_options.lower() not in ("false", "0", "no", "none", "")
+    else:
+        trade_options = bool(raw_trade_options)
+
+    if not trade_options:
+        trade_mode = "NONE"
+    else:
+        opt_type_raw = str(params.get("option_type", "AUTO")).upper()
+        if opt_type_raw in ("CE", "PE", "AUTO"):
+            trade_mode = opt_type_raw
+        else:
+            trade_mode = "AUTO"
+
+    df = await _load_symbol_data(symbol, period_days)
     if df.empty or len(df) < 50:
-        return {"metrics": {}, "equity_curve": [], "trades_log": [], "data_source": "none", "reason": "no_parquet_data"}
+        return {
+            "metrics": {}, "equity_curve": [], "trades_log": [],
+            "data_source": "none", "reason": "no_data_in_db",
+            "trade_mode": trade_mode,
+        }
+
     rule = params.get("resample", "1min")
     candles = _resample(df, rule)
     if len(candles) < 30:
-        return {"metrics": {}, "equity_curve": [], "trades_log": [], "data_source": "none", "reason": "insufficient_candles"}
+        return {
+            "metrics": {}, "equity_curve": [], "trades_log": [],
+            "data_source": "none", "reason": "insufficient_candles",
+            "trade_mode": trade_mode,
+        }
 
-    # Calculate how many distinct days are actually in the candles
     days_available = candles["ts"].dt.date.nunique() if not candles.empty else 0
     days_missing = max(0, period_days - days_available)
 
     sig_fn = _SIG_MAP.get(strategy_kind, _signals_ema_crossover)
     signals = sig_fn(candles, params)
-    res = _simulate(symbol, candles, signals, params)
-    res["data_source"] = "parquet"
+    
+    # Global Parquet OHLC memory cache - reset on every backtest run to prevent huge memory leaks
+    global _PARQUET_CACHE
+    _PARQUET_CACHE = {}
+    
+    res = await _simulate(symbol, candles, signals, params, trade_mode)
+    res["data_source"] = "mysql"
     res["bars_loaded"] = len(candles)
     res["days_available"] = days_available
     res["days_missing"] = days_missing
     res["days_requested"] = period_days
     res["raw_ticks"] = len(df)
+    res["trade_mode"] = trade_mode
     return res

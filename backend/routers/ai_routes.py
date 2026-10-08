@@ -5,8 +5,10 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Any, Dict, Optional
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from auth import get_current_user
+from db import get_db
 from models import User
 from services.ai_engine import explain_signal, stream_explanation
 from services.anomaly_sweep import anomaly_sweeper
@@ -20,7 +22,7 @@ class AskRequest(BaseModel):
 
 
 @router.post("/explain")
-async def explain(body: AskRequest, user: User = Depends(get_current_user)):
+async def explain(body: AskRequest, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     session_id = f"{user.id}:{body.session_id}"
 
     async def gen():
@@ -46,12 +48,13 @@ class ExplainSignalRequest(BaseModel):
 
 @router.post("/explain-signal")
 async def explain_signal_endpoint(body: ExplainSignalRequest,
-                                  user: User = Depends(get_current_user)) -> Dict[str, Any]:
+                                  user: User = Depends(get_current_user),
+                                  db: AsyncSession = Depends(get_db)) -> Dict[str, Any]:
     """One-shot trade explanation — used by the "Why?" button on signals."""
     session_id = f"{user.id}:explain-signal:{body.symbol}:{body.kind}"
     return await explain_signal(session_id, body.model_dump())
 
 
 @router.get("/anomaly-sweep/status")
-async def anomaly_sweep_status(user: User = Depends(get_current_user)):
+async def anomaly_sweep_status(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     return anomaly_sweeper.stats()

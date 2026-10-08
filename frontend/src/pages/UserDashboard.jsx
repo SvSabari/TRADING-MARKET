@@ -101,18 +101,21 @@ function DashboardFunds() {
 
 export default function UserDashboard() {
   const { user, logout } = useAuth();
+  const [profileData, setProfileData] = useState(null);
   const [brokers, setBrokers] = useState([]);
   const [orders, setOrders] = useState([]);
   const [busyBroker, setBusyBroker] = useState("");
   const [tokenInputs, setTokenInputs] = useState({});
   const [loadingOrders, setLoadingOrders] = useState(false);
   const [confirmReconnect, setConfirmReconnect] = useState(null);
+  const [isToggling, setIsToggling] = useState(false);
 
   const loadData = async () => {
     try {
-      const [bRes, oRes] = await Promise.allSettled([
+      const [bRes, oRes, pRes] = await Promise.allSettled([
         api.get("/managed-users/me/brokers"),
         api.get("/managed-users/me/orders"),
+        api.get("/managed-users/me")
       ]);
 
       if (bRes.status === "fulfilled") {
@@ -121,8 +124,26 @@ export default function UserDashboard() {
       if (oRes.status === "fulfilled") {
         setOrders(oRes.value.data.orders || []);
       }
+      if (pRes.status === "fulfilled") {
+        setProfileData(pRes.value.data);
+      }
     } catch (err) {
-      toast.error("Failed to load user portal data");
+      console.error(err);
+    }
+  };
+
+  const togglePlaceOrder = async () => {
+    if (!profileData) return;
+    const nextVal = !profileData.place_order;
+    setIsToggling(true);
+    try {
+      await api.patch("/managed-users/me/place_order", { place_order: nextVal });
+      setProfileData(prev => ({ ...prev, place_order: nextVal }));
+      toast.success(nextVal ? "Trading Enabled" : "Trading Disabled");
+    } catch (e) {
+      toast.error("Failed to toggle trading status");
+    } finally {
+      setIsToggling(false);
     }
   };
 
@@ -187,13 +208,29 @@ export default function UserDashboard() {
             {user?.name?.[0]?.toUpperCase() || "U"}
           </div>
           <div>
-            <div style={{ fontFamily: "Outfit", fontWeight: 700, fontSize: 14 }} className="flex items-center gap-2">
-              <span>{user?.name}</span>
-              <span className="text-[9px] mono uppercase tracking-wider px-1.5 py-0.5 rounded font-bold" style={{ background: "rgba(42,157,143,0.12)", color: "var(--buy)" }}>
-                Active
-              </span>
+            <div style={{ fontFamily: "Outfit", fontWeight: 700, fontSize: 14 }} className="flex items-center gap-3">
+              <span>{profileData?.name || user?.name}</span>
+              <button 
+                onClick={togglePlaceOrder}
+                disabled={isToggling || !profileData}
+                title="Click to pause or resume trading on your account"
+                className={`flex items-center gap-1.5 text-[10px] mono uppercase tracking-wider px-3 py-1 rounded-md font-bold transition-all border shadow-sm ${
+                  profileData?.place_order 
+                    ? "bg-[#14532d]/10 text-[#16a34a] border-[#16a34a]/30 hover:bg-[#16a34a] hover:text-white" 
+                    : "bg-red-900/10 text-red-500 border-red-500/30 hover:bg-red-600 hover:text-white"
+                }`}
+              >
+                {isToggling ? (
+                  <ArrowClockwise className="animate-spin" size={14} />
+                ) : profileData?.place_order ? (
+                  <CheckCircle size={14} weight="bold" />
+                ) : (
+                  <XCircle size={14} weight="bold" />
+                )}
+                {isToggling ? "UPDATING" : profileData?.place_order ? "TRADING ACTIVE" : "TRADING PAUSED"}
+              </button>
             </div>
-            <div className="dim text-[10px] mono tracking-widest uppercase">Sub-Account User Portal</div>
+            <div className="dim text-[10px] mono tracking-widest uppercase mt-1">Sub-Account User Portal</div>
           </div>
         </div>
         <button className="btn btn-outline text-[11px] px-3 py-1" onClick={logout}>
@@ -316,7 +353,7 @@ export default function UserDashboard() {
                     return (
                       <tr key={o.id} className="hover:bg-[rgba(255,255,255,0.02)] transition-colors">
                         <td className="py-3 px-4 mono dim text-[11px]">
-                          {o.placed_at ? new Date(o.placed_at).toLocaleTimeString() : "—"}
+                          {o.placed_at ? new Date(o.placed_at + (!o.placed_at.endsWith("Z") ? "Z" : "")).toLocaleTimeString([], {hour: "2-digit", minute:"2-digit", second:"2-digit"}) : "—"}
                         </td>
                         <td className="py-3 px-4 font-bold mono">{o.symbol}</td>
                         <td className="py-3 px-4 text-center">
@@ -330,13 +367,25 @@ export default function UserDashboard() {
                         <td className="py-3 px-4 text-right mono font-bold">{o.qty}</td>
                         <td className="py-3 px-4 text-right mono">₹{o.price?.toFixed(2)}</td>
                         <td className="py-3 px-4 mono uppercase text-[10px] font-bold dim">{o.broker}</td>
-                        <td className="py-3 px-4 text-center">
-                          <span className="text-[10px] mono font-bold uppercase px-2 py-0.5 rounded" style={{
-                            background: o.status === "FILLED" ? "rgba(42,157,143,0.12)" : "rgba(255,255,255,0.05)",
-                            color: o.status === "FILLED" ? "var(--buy)" : "var(--text-secondary)",
-                          }}>
-                            {o.status}
-                          </span>
+                        <td className="py-3 px-4 text-center" title={o.reject_reason || ""}>
+                          <div className="flex flex-col items-center">
+                            <span className="text-[10px] mono font-bold uppercase px-2 py-0.5 rounded" style={{
+                              background: o.status === "FILLED" ? "rgba(42,157,143,0.12)" : o.status === "REJECTED" ? "rgba(231,111,81,0.12)" : "rgba(255,255,255,0.05)",
+                              color: o.status === "FILLED" ? "var(--buy)" : o.status === "REJECTED" ? "var(--sell)" : "var(--text-secondary)",
+                            }}>
+                              {o.status}
+                            </span>
+                            {o.status === "REJECTED" && o.reject_reason && (
+                                <span className="text-[9px] text-red-500/80 truncate max-w-[120px] lg:max-w-[200px] font-sans mt-1 leading-none">
+                                  {
+                                    o.reject_reason
+                                    .replace(/^(ORA|RED):/, '')
+                                    .replace(/'MIS' Orders are disallowed after system square off/i, 'Market closed for Intraday (MIS)')
+                                    .replace(/Margin Shortfall:INR ([0-9.]+) Available:INR ([0-9.]+) for .*/i, 'Margin Shortfall: ₹$1 (Available: ₹$2)')
+                                  }
+                                </span>
+                            )}
+                          </div>
                         </td>
                         <td className="py-3 px-4 text-right mono font-bold whitespace-nowrap">
                           {(() => {

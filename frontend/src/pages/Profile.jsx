@@ -39,6 +39,20 @@ export default function Profile() {
       }
     }
     loadData();
+
+    const handleOrderPlaced = () => {
+      api.get("/orders").then(orderRes => {
+        if (orderRes.data && orderRes.data.orders) {
+          const realOrders = orderRes.data.orders.filter(o => o.broker !== 'mock');
+          const buys = realOrders.filter(o => o.side?.toUpperCase() === 'BUY').length;
+          const sells = realOrders.filter(o => o.side?.toUpperCase() === 'SELL').length;
+          setOrderStats({ buy: buys, sell: sells });
+        }
+      }).catch(console.error);
+    };
+
+    window.addEventListener('orderPlaced', handleOrderPlaced);
+    return () => window.removeEventListener('orderPlaced', handleOrderPlaced);
   }, []);
 
   if (loading) {

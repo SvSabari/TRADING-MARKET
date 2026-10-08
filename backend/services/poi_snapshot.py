@@ -12,7 +12,9 @@ import asyncio
 import logging
 from datetime import datetime, timezone
 
-from db import db, utc_now_iso
+from sqlalchemy import select, update, insert, delete, desc
+from db import AsyncSessionLocal
+from models import POISnapshot
 from services.market_data import tick_engine
 
 logger = logging.getLogger(__name__)
@@ -21,6 +23,9 @@ logger = logging.getLogger(__name__)
 _poi_initialized_today = False
 
 
+def utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
 async def save_snapshot():
     """Takes the current oi_cache and saves it to db.poi_snapshots for today."""
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -28,19 +33,21 @@ async def save_snapshot():
     if not tick_engine.oi_cache:
         return
 
-    doc = {
-        "date": today,
-        "oi_data": dict(tick_engine.oi_cache),
-        "close_data": dict(tick_engine.prices),
-        "updated_at": utc_now_iso()
-    }
-
     try:
-        await db.poi_snapshots.update_one(
-            {"date": today},
-            {"$set": doc},
-            upsert=True
-        )
+        async with AsyncSessionLocal() as session:
+            doc = (await session.execute(
+                select(POISnapshot).where(POISnapshot.date == today)
+            )).scalar_one_or_none()
+            
+            if not doc:
+                doc = POISnapshot(date=today)
+                session.add(doc)
+            
+            doc.oi_data = dict(tick_engine.oi_cache)
+            doc.close_data = dict(tick_engine.prices)
+            doc.updated_at = utc_now_iso()
+            
+            await session.commit()
     except Exception as e:
         logger.error(f"Failed to save POI snapshot: {e}")
 
@@ -71,59 +78,59 @@ async def load_snapshot():
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
     try:
-        # Fetch the 10 most recent snapshots so we can find data for all segments
-        cursor = db.poi_snapshots.find({}).sort("date", -1).limit(10)
-        docs = []
-        async for doc in cursor:
-            docs.append(doc)
+        async with AsyncSessionLocal() as session:
+            # Fetch the 10 most recent snapshots so we can find data for all segments
+            docs = (await session.execute(
+                select(POISnapshot).order_by(desc(POISnapshot.date)).limit(10)
+            )).scalars().all()
 
-        # Separate past vs today docs
-        past_docs = [d for d in docs if d.get("date", "") < today]
-        today_doc = next((d for d in docs if d.get("date", "") == today), None)
+            # Separate past vs today docs
+            past_docs = [d for d in docs if d.date < today]
+            today_doc = next((d for d in docs if d.date == today), None)
 
-        nfo_loaded = False
-        bfo_loaded = False
+            nfo_loaded = False
+            bfo_loaded = False
 
-        # Load from past snapshots — try to get NFO and BFO separately
-        for doc in past_docs:
-            oi_data = doc.get("oi_data", {})
-            close_data = doc.get("close_data", {})
+            # Load from past snapshots — try to get NFO and BFO separately
+            for doc in past_docs:
+                oi_data = doc.oi_data or {}
+                close_data = doc.close_data or {}
 
-            nfo_tokens = {k: v for k, v in oi_data.items() if k.startswith("NFO")}
-            bfo_tokens = {k: v for k, v in oi_data.items() if k.startswith("BFO")}
+                nfo_tokens = {k: v for k, v in oi_data.items() if k.startswith("NFO")}
+                bfo_tokens = {k: v for k, v in oi_data.items() if k.startswith("BFO")}
 
-            if nfo_tokens and not nfo_loaded:
-                tick_engine.poi_cache.update(nfo_tokens)
-                logger.info(f"Loaded NFO POI from {doc['date']}: {len(nfo_tokens)} tokens.")
-                nfo_loaded = True
+                if nfo_tokens and not nfo_loaded:
+                    tick_engine.poi_cache.update(nfo_tokens)
+                    logger.info(f"Loaded NFO POI from {doc.date}: {len(nfo_tokens)} tokens.")
+                    nfo_loaded = True
 
-            if bfo_tokens and not bfo_loaded:
-                tick_engine.poi_cache.update(bfo_tokens)
-                logger.info(f"Loaded BFO POI from {doc['date']}: {len(bfo_tokens)} tokens.")
-                bfo_loaded = True
+                if bfo_tokens and not bfo_loaded:
+                    tick_engine.poi_cache.update(bfo_tokens)
+                    logger.info(f"Loaded BFO POI from {doc.date}: {len(bfo_tokens)} tokens.")
+                    bfo_loaded = True
 
-            if close_data:
-                tick_engine.prev_close_cache.update(close_data)
+                if close_data:
+                    tick_engine.prev_close_cache.update(close_data)
 
-            if nfo_loaded and bfo_loaded:
-                break
+                if nfo_loaded and bfo_loaded:
+                    break
 
-        # If BFO still not found in any past snapshot, fall back to today's snapshot
-        # (happens the first time SENSEX/BANKEX data is collected — use it as baseline)
-        if not bfo_loaded and today_doc:
-            oi_data = today_doc.get("oi_data", {})
-            bfo_tokens = {k: v for k, v in oi_data.items() if k.startswith("BFO")}
-            if bfo_tokens:
-                tick_engine.poi_cache.update(bfo_tokens)
-                logger.info(
-                    f"No past BFO snapshot found — seeding POI from today's snapshot: "
-                    f"{len(bfo_tokens)} BFO tokens."
-                )
+            # If BFO still not found in any past snapshot, fall back to today's snapshot
+            # (happens the first time SENSEX/BANKEX data is collected — use it as baseline)
+            if not bfo_loaded and today_doc:
+                oi_data = today_doc.oi_data or {}
+                bfo_tokens = {k: v for k, v in oi_data.items() if k.startswith("BFO")}
+                if bfo_tokens:
+                    tick_engine.poi_cache.update(bfo_tokens)
+                    logger.info(
+                        f"No past BFO snapshot found — seeding POI from today's snapshot: "
+                        f"{len(bfo_tokens)} BFO tokens."
+                    )
 
-        logger.info(
-            f"POI load complete. poi_cache has {len(tick_engine.poi_cache)} total tokens. "
-            f"NFO loaded: {nfo_loaded}, BFO loaded: {bfo_loaded}."
-        )
+            logger.info(
+                f"POI load complete. poi_cache has {len(tick_engine.poi_cache)} total tokens. "
+                f"NFO loaded: {nfo_loaded}, BFO loaded: {bfo_loaded}."
+            )
 
     except Exception as e:
         logger.error(f"Failed to load POI snapshot: {e}")

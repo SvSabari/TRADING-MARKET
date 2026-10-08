@@ -37,6 +37,10 @@ export default function CandleChart({ data, symbol, interval, indicators = [] })
       timeScale: { timeVisible: true, secondsVisible: false },
       rightPriceScale: { scaleMargins: { top: 0.15, bottom: 0.25 } },
       autoSize: true,
+      crosshair: {
+        vertLine: { visible: false, labelVisible: false },
+        horzLine: { visible: false, labelVisible: false },
+      },
     });
     chartRef.current = chart;
 
@@ -103,14 +107,14 @@ export default function CandleChart({ data, symbol, interval, indicators = [] })
                 <span style="display:inline-block; width:6px; height:6px; border-radius:50%; background-color:${color}; margin-left: 2px;"></span>
               </div>
               <div style="font-size: 12px; font-family: monospace; display: flex; gap: 8px; text-shadow: -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff, 0 0 4px #fff;">
-                <span>O <span style="color: ${color}">${open.toFixed(2)}</span></span>
-                <span>H <span style="color: ${color}">${high.toFixed(2)}</span></span>
-                <span>L <span style="color: ${color}">${low.toFixed(2)}</span></span>
-                <span>C <span style="color: ${color}">${close.toFixed(2)} <span style="margin-left: 4px;">${sign}${change.toFixed(2)} (${sign}${changePct.toFixed(2)}%)</span></span></span>
+                <span>O <span>${open.toFixed(2)}</span></span>
+                <span>H <span>${high.toFixed(2)}</span></span>
+                <span>L <span>${low.toFixed(2)}</span></span>
+                <span>C <span>${close.toFixed(2)} <span style="margin-left: 4px;">${sign}${change.toFixed(2)} (${sign}${changePct.toFixed(2)}%)</span></span></span>
               </div>
             </div>
             <div style="font-size: 11px; font-family: monospace; display: flex; gap: 8px; flex-wrap: wrap; text-shadow: -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff, 0 0 4px #fff;">
-              <span style="color: #333">Vol <span style="color: #26a69a">${volFmt}</span></span>
+              <span style="color: #333">Vol <span>${volFmt}</span></span>
               ${indHtml}
             </div>
           </div>

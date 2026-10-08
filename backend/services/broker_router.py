@@ -21,6 +21,8 @@ from services.instrument_map import (
     ANGEL_TOKENS, UPSTOX_KEYS,
 )
 from services.kite_client import get_user_kite_service
+from sqlalchemy import select
+from models import BrokerConnection
 
 logger = logging.getLogger(__name__)
 LOCAL_ONLY = os.environ.get("LOCAL_ONLY", "true").strip().lower() in {"1", "true", "yes", "on"}
@@ -84,10 +86,10 @@ async def _route_kite(db, user_id: str, *, symbol: str, side: str, qty: int,
 
 async def _route_angel(db, user_id: str, *, symbol: str, side: str, qty: int,
                        price: float, order_type: str, product: str) -> Optional[Dict]:
-    doc = await db.broker_connections.find_one({"user_id": user_id, "broker": "angel"})
-    if not doc or doc.get("mock_mode"):
+    doc = (await db.execute(select(BrokerConnection).where(BrokerConnection.user_id == user_id, BrokerConnection.broker == "angel"))).scalar_one_or_none()
+    if not doc or doc.mock_mode:
         return None
-    creds = doc.get("credentials") or {}
+    creds = doc.credentials or {}
     api_key = decrypt_str(creds.get("api_key", ""))
     client_code = decrypt_str(creds.get("client_code", ""))
     pin = decrypt_str(creds.get("pin", ""))
@@ -121,10 +123,10 @@ async def _route_angel(db, user_id: str, *, symbol: str, side: str, qty: int,
 
 async def _route_upstox(db, user_id: str, *, symbol: str, side: str, qty: int,
                         price: float, order_type: str, product: str) -> Optional[Dict]:
-    doc = await db.broker_connections.find_one({"user_id": user_id, "broker": "upstox"})
-    if not doc or doc.get("mock_mode") or not doc.get("access_token"):
+    doc = (await db.execute(select(BrokerConnection).where(BrokerConnection.user_id == user_id, BrokerConnection.broker == "upstox"))).scalar_one_or_none()
+    if not doc or doc.mock_mode or not doc.access_token:
         return None
-    access_token = decrypt_str(doc["access_token"])
+    access_token = decrypt_str(doc.access_token)
     if not access_token:
         return None
     instrument_key = next((k for k, sym in UPSTOX_KEYS.items() if sym == symbol), None)
@@ -150,10 +152,10 @@ async def _route_upstox(db, user_id: str, *, symbol: str, side: str, qty: int,
 
 async def _route_dhan(db, user_id: str, *, symbol: str, side: str, qty: int,
                       price: float, order_type: str, product: str) -> Optional[Dict]:
-    doc = await db.broker_connections.find_one({"user_id": user_id, "broker": "dhan"})
-    if not doc or doc.get("mock_mode"):
+    doc = (await db.execute(select(BrokerConnection).where(BrokerConnection.user_id == user_id, BrokerConnection.broker == "dhan"))).scalar_one_or_none()
+    if not doc or doc.mock_mode:
         return None
-    creds = doc.get("credentials") or {}
+    creds = doc.credentials or {}
     client_id = decrypt_str(creds.get("client_id", ""))
     access_token = decrypt_str(creds.get("access_token", ""))
     security_id = decrypt_str(creds.get(f"sec_{symbol}", ""))  # optional per-symbol map
@@ -178,8 +180,8 @@ async def _route_dhan(db, user_id: str, *, symbol: str, side: str, qty: int,
 
 async def _route_breeze(db, user_id: str, *, symbol: str, side: str, qty: int,
                         price: float, order_type: str, product: str) -> Optional[Dict]:
-    doc = await db.broker_connections.find_one({"user_id": user_id, "broker": "breeze"})
-    if not doc or doc.get("mock_mode"):
+    doc = (await db.execute(select(BrokerConnection).where(BrokerConnection.user_id == user_id, BrokerConnection.broker == "breeze"))).scalar_one_or_none()
+    if not doc or doc.mock_mode:
         return None
     from services.brokers.breeze_client import get_user_breeze_client
     client = await get_user_breeze_client(db, user_id)
@@ -202,8 +204,8 @@ async def _route_breeze(db, user_id: str, *, symbol: str, side: str, qty: int,
 
 async def _route_aliceblue(db, user_id: str, *, symbol: str, side: str, qty: int,
                            price: float, order_type: str, product: str) -> Optional[Dict]:
-    doc = await db.broker_connections.find_one({"user_id": user_id, "broker": "aliceblue"})
-    if not doc or doc.get("mock_mode") or not doc.get("access_token"):
+    doc = (await db.execute(select(BrokerConnection).where(BrokerConnection.user_id == user_id, BrokerConnection.broker == "aliceblue"))).scalar_one_or_none()
+    if not doc or doc.mock_mode or not doc.access_token:
         return None
     from services.brokers.aliceblue_client import get_user_aliceblue_client
     client = await get_user_aliceblue_client(db, user_id)
@@ -227,11 +229,31 @@ async def _route_aliceblue(db, user_id: str, *, symbol: str, side: str, qty: int
             price=price if order_type == "LIMIT" else None,
         )
         if order_id:
+            # Instantly check if RMS rejected it
+            import asyncio
+            await asyncio.sleep(0.5)
+            try:
+                history = client.get_order_history(str(order_id))
+                if isinstance(history, dict):
+                    # pya3 get_order_history returns a single dict when order is found
+                    status = (history.get("Status") or history.get("orderstatus") or "").lower()
+                    if status == "rejected":
+                        reason = history.get("RejReason") or history.get("Cancel notes") or history.get("remarks") or "RMS Rejection"
+                        return {"broker_order_id": order_id, "status": "REJECTED", "fill_price": price, "reject_reason": reason, "mode": "live-aliceblue"}
+                elif isinstance(history, list) and len(history) > 0:
+                    for item in history:
+                        status = (item.get("Status") or item.get("orderstatus") or "").lower()
+                        if status == "rejected":
+                            reason = item.get("RejReason") or item.get("Cancel notes") or item.get("remarks") or "RMS Rejection"
+                            return {"broker_order_id": order_id, "status": "REJECTED", "fill_price": price, "reject_reason": reason, "mode": "live-aliceblue"}
+            except Exception as he:
+                pass
+                
             return _live_response(order_id, price, "live-aliceblue")
     except Exception as e:
         logger.warning("AliceBlue order failed: %s", e)
-        from fastapi import HTTPException
-        raise HTTPException(status_code=400, detail=f"AliceBlue Error: {str(e)}")
+        # Instead of throwing 400 and losing the record, return REJECTED to save it in DB
+        return {"broker_order_id": None, "status": "REJECTED", "fill_price": price, "reject_reason": str(e), "mode": "failed"}
     return None
 
 
@@ -258,6 +280,14 @@ async def route_order(db, user_id: str, broker_name: str, *,
                       order_type: str = "MARKET", product: str = "MIS") -> Dict:
     """High-level routing: routes to the real broker if requested, otherwise mock."""
     if LOCAL_ONLY or broker_name.lower() == "mock":
+        return await _mock.place_order(symbol=symbol, side=side, qty=qty, price=price,
+                                       order_type=order_type, product=product)
+                                       
+    from sqlalchemy import select
+    from models import BrokerConnection
+    doc = (await db.execute(select(BrokerConnection).where(BrokerConnection.user_id == user_id, BrokerConnection.broker == broker_name.lower()))).scalar_one_or_none()
+    
+    if not doc or doc.mock_mode:
         return await _mock.place_order(symbol=symbol, side=side, qty=qty, price=price,
                                        order_type=order_type, product=product)
                                        

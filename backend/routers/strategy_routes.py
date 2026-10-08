@@ -1,17 +1,22 @@
 """Strategy CRUD + toggle + scheduler status endpoints."""
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
+from datetime import datetime, timezone
+import uuid
 
 from auth import get_current_user
 from constants import STRATEGY_KINDS
-from db import db
-from models import Strategy, StrategyCreate, StrategyUpdate, User
+from db import get_db
+from models import Strategy, User
+from schemas import StrategyCreate, StrategyUpdate
 from services.strategy_scheduler import scheduler
 
 router = APIRouter(prefix="/strategies", tags=["strategies"])
 
 
 @router.get("/kinds")
-async def kinds(user: User = Depends(get_current_user)):
+async def kinds(user: User = Depends(get_current_user), session: AsyncSession = Depends(get_db)):
     return {
         "kinds": [
             {"id": "pyro_algo",              "name": "PYRO ALGO",                "description": "Combines Stochastic crossover with SuperTrend direction for high-probability trend entries.", "params_hint": "st_period=10, k=14, d=3", "category": "trend"},
@@ -36,48 +41,83 @@ async def kinds(user: User = Depends(get_current_user)):
 
 
 @router.get("/scheduler-status")
-async def scheduler_status(user: User = Depends(get_current_user)):
+async def scheduler_status(user: User = Depends(get_current_user), session: AsyncSession = Depends(get_db)):
     return scheduler.stats()
 
 
 @router.get("")
-async def list_strategies(user: User = Depends(get_current_user)):
-    cur = db.strategies.find({"user_id": user.id}).sort("created_at", -1)
+async def list_strategies(user: User = Depends(get_current_user), session: AsyncSession = Depends(get_db)):
+    stmt = select(Strategy).where(Strategy.user_id == user.id).order_by(Strategy.created_at.desc())
+    result = await session.execute(stmt)
+    strategies = result.scalars().all()
+    
     out = []
-    async for d in cur:
-        out.append(Strategy.from_mongo(d).model_dump())
+    for d in strategies:
+        out.append({
+            "id": d.id, "user_id": d.user_id, "name": d.name, "kind": d.kind,
+            "enabled": d.enabled, "copy_to_users": d.copy_to_users,
+            "params": d.params, "symbols": d.symbols,
+            "fire_count": d.fire_count, "last_fire_at": d.last_fire_at,
+            "created_at": d.created_at
+        })
     return {"strategies": out}
 
 
-@router.post("", response_model=Strategy, response_model_by_alias=False)
-async def create_strategy(body: StrategyCreate, user: User = Depends(get_current_user)):
+@router.post("")
+async def create_strategy(body: StrategyCreate, user: User = Depends(get_current_user), session: AsyncSession = Depends(get_db)):
     if body.kind not in STRATEGY_KINDS:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid strategy kind")
     params = dict(body.params or {})
     params.setdefault("interval_seconds", max(5, int(body.interval_seconds)))
     params.setdefault("qty", int(params.get("qty", 1)))
     strat = Strategy(
+        id=str(uuid.uuid4()),
         user_id=user.id, name=body.name, kind=body.kind, enabled=body.enabled,
-        params=params, symbols=body.symbols,
+        params=params, symbols=body.symbols, created_at=datetime.now(timezone.utc)
     )
-    await db.strategies.insert_one(strat.to_mongo())
-    return strat
+    session.add(strat)
+    await session.commit()
+    return {
+        "id": strat.id, "user_id": strat.user_id, "name": strat.name, "kind": strat.kind,
+        "enabled": strat.enabled, "copy_to_users": strat.copy_to_users,
+        "params": strat.params, "symbols": strat.symbols,
+        "fire_count": strat.fire_count, "last_fire_at": strat.last_fire_at,
+        "created_at": strat.created_at
+    }
 
 
-@router.patch("/{strategy_id}", response_model=Strategy, response_model_by_alias=False)
+@router.patch("/{strategy_id}")
 async def update_strategy(strategy_id: str, body: StrategyUpdate,
-                          user: User = Depends(get_current_user)):
-    doc = await db.strategies.find_one({"_id": strategy_id, "user_id": user.id})
+                          user: User = Depends(get_current_user), session: AsyncSession = Depends(get_db)):
+    stmt = select(Strategy).where(Strategy.id == strategy_id, Strategy.user_id == user.id)
+    result = await session.execute(stmt)
+    doc = result.scalar_one_or_none()
     if not doc:
         raise HTTPException(status_code=404, detail="Not found")
-    update = {k: v for k, v in body.model_dump(exclude_none=True).items()}
-    if update:
-        await db.strategies.update_one({"_id": strategy_id}, {"$set": update})
-    new_doc = await db.strategies.find_one({"_id": strategy_id})
-    return Strategy.from_mongo(new_doc)
+        
+    update_data = body.model_dump(exclude_none=True)
+    if update_data:
+        for k, v in update_data.items():
+            setattr(doc, k, v)
+        await session.commit()
+        
+    return {
+        "id": doc.id, "user_id": doc.user_id, "name": doc.name, "kind": doc.kind,
+        "enabled": doc.enabled, "copy_to_users": doc.copy_to_users,
+        "params": doc.params, "symbols": doc.symbols,
+        "fire_count": doc.fire_count, "last_fire_at": doc.last_fire_at,
+        "created_at": doc.created_at
+    }
 
 
 @router.delete("/{strategy_id}")
-async def delete_strategy(strategy_id: str, user: User = Depends(get_current_user)):
-    res = await db.strategies.delete_one({"_id": strategy_id, "user_id": user.id})
-    return {"deleted": res.deleted_count}
+async def delete_strategy(strategy_id: str, user: User = Depends(get_current_user), session: AsyncSession = Depends(get_db)):
+    stmt = select(Strategy).where(Strategy.id == strategy_id, Strategy.user_id == user.id)
+    result = await session.execute(stmt)
+    doc = result.scalar_one_or_none()
+    
+    if doc:
+        await session.delete(doc)
+        await session.commit()
+        return {"deleted": 1}
+    return {"deleted": 0}

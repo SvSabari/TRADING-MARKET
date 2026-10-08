@@ -70,7 +70,7 @@ export default function Strategies() {
     <div className="space-y-4" data-testid="strategies-page">
       <div>
         <h1 style={{ fontFamily: "Outfit", fontWeight: 700, fontSize: 28, letterSpacing: "-0.01em" }}>Strategy manager</h1>
-        <p className="dim text-sm mt-1">Enable, configure and combine algorithmic strategies. Mock execution only.</p>
+        <p className="dim text-sm mt-1">Enable, configure and combine algorithmic strategies. Live execution will be routed to your active broker.</p>
       </div>
       <Panel title="Create Strategy" kicker="configure & launch">
         <div className="p-4 grid grid-cols-1 md:grid-cols-3 xl:grid-cols-6 gap-4">
@@ -91,31 +91,50 @@ export default function Strategies() {
           </button>
           <div className="relative">
             <div 
-              className="terminal cursor-pointer min-h-[38px] flex items-center overflow-hidden whitespace-nowrap" 
+              className="terminal cursor-pointer min-h-[38px] flex items-center overflow-hidden whitespace-nowrap text-ellipsis px-3" 
               onClick={() => setShowSymbolDropdown(!showSymbolDropdown)}
             >
-              {form.symbols || <span className="dim">Select Symbols...</span>}
+              {form.symbols ? (
+                <span className="truncate">{form.symbols}</span>
+              ) : (
+                <span className="dim">Select Symbols...</span>
+              )}
             </div>
             {showSymbolDropdown && (
-              <div className="absolute top-full left-0 w-64 max-h-64 overflow-y-auto bg-white border border-gray-300 z-50 p-2 shadow-xl">
-                <div className="text-xs mb-2 dim flex justify-between">
-                  <span>Select Stocks:</span>
-                  <button onClick={(e) => { e.stopPropagation(); setShowSymbolDropdown(false); }} className="hover:text-white">Close</button>
+              <div 
+                className="absolute top-full left-0 w-full mt-1 max-h-56 overflow-y-auto bg-[var(--surface)] border border-[var(--border)] rounded-md z-50 p-2 shadow-2xl"
+                style={{ background: "#ffffff", color: "#111827", borderColor: "#e5e7eb" }}
+              >
+                <div className="text-xs mb-2 pb-1 border-b border-gray-200 dim flex justify-between items-center font-bold px-1">
+                  <span>Select Stocks ({symbolsList.length}):</span>
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); setShowSymbolDropdown(false); }} 
+                    className="text-xs text-blue-600 hover:text-blue-800 font-semibold"
+                  >
+                    Done
+                  </button>
                 </div>
-                {symbolsList.map(sym => {
-                  const isSelected = form.symbols.split(",").map(s => s.trim()).includes(sym);
-                  return (
-                    <label key={sym} className="flex items-center px-2 py-1 hover:bg-gray-100 cursor-pointer text-sm">
-                      <input 
-                        type="checkbox" 
-                        checked={isSelected}
-                        onChange={() => toggleSymbol(sym)}
-                        className="mr-2"
-                      />
-                      {sym}
-                    </label>
-                  );
-                })}
+                <div className="space-y-0.5">
+                  {symbolsList.map(sym => {
+                    const isSelected = form.symbols.split(",").map(s => s.trim()).includes(sym);
+                    return (
+                      <label key={sym} className="flex items-center px-2 py-1.5 hover:bg-gray-100 rounded cursor-pointer text-xs font-mono select-none">
+                        <input 
+                          type="checkbox" 
+                          checked={isSelected}
+                          onChange={() => toggleSymbol(sym)}
+                          className="mr-2 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                        />
+                        <span>{sym}</span>
+                      </label>
+                    );
+                  })}
+                  {symbolsList.length === 0 && (
+                    <div className="p-3 text-center text-xs text-gray-500 italic">
+                      Loading symbols...
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>

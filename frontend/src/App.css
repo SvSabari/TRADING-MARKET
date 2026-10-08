@@ -27,7 +27,7 @@
 .app-ticker  { grid-area: ticker; overflow: hidden; background: var(--surface); }
 .app-main    { grid-area: main; position: relative; display: flex; flex-direction: column; overflow: hidden; background: #F3F5F4; }
 .app-right-sidebar { grid-area: right-sidebar; overflow: hidden; background: #F3F5F4; border-left: 1px solid var(--border); }
-.app-status  { grid-area: statusbar; border-top: 1px solid var(--border); background: var(--surface); display:flex; align-items:center; padding: 0 16px; gap: 16px; font-family: "JetBrains Mono", monospace; font-size: 11px; color: var(--text-muted); overflow-x: auto; white-space: nowrap; scrollbar-width: none; }
+.app-status  { grid-area: statusbar; border-top: 1px solid var(--border); background: var(--surface); display:flex; align-items:center; padding: 0 16px; gap: 16px; font-family: "JetBrains Mono", monospace; font-size: 11px; color: var(--text-muted); overflow: visible; white-space: nowrap; scrollbar-width: none; }
 .app-status::-webkit-scrollbar { display: none; }
 
 .sidebar-link {

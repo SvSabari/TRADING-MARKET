@@ -1,314 +1,190 @@
-"""Pydantic models for the Algo Trading platform."""
-from datetime import datetime
-from typing import Optional, List, Dict, Any
-from pydantic import BaseModel, EmailStr, Field, ConfigDict
+from sqlalchemy import Column, Integer, String, Boolean, Float, DateTime, JSON, Text
+from db import Base
 
-from db import BaseDocument, utc_now
+class User(Base):
+    __tablename__ = "users"
+    id = Column(String(36), primary_key=True)
+    email = Column(String(255), unique=True, nullable=False)
+    password_hash = Column(String(255), nullable=False)
+    role = Column(String(50), default="trader")
 
-# ---------- Auth ----------
-class User(BaseDocument):
-    email: EmailStr
-    name: str
-    password_hash: str
-    role: str = "trader"  # trader | managed_user
-    tv_webhook_secret: str = ""  # per-user webhook secret
-    created_at: datetime = Field(default_factory=utc_now)
+class BrokerConnection(Base):
+    __tablename__ = "broker_connections"
+    id = Column(String(36), primary_key=True)
+    user_id = Column(String(36), index=True)
+    broker = Column(String(50))
+    is_data_feed = Column(Boolean, default=False)
+    is_order_exec = Column(Boolean, default=False)
+    mock_mode = Column(Boolean, default=True)
+    connected = Column(Boolean, default=False)
+    credentials = Column(JSON)
+    access_token = Column(Text)
+    session_date = Column(String(50))
 
+class ManagedUser(Base):
+    __tablename__ = "managed_users"
+    id = Column(String(36), primary_key=True)
+    trader_id = Column(String(36), index=True)
+    name = Column(String(255))
+    email = Column(String(255))
+    max_allocation = Column(Float, default=0.0)
+    is_active = Column(Boolean, default=True)
+    auto_copy = Column(Boolean, default=False)
+    place_order = Column(Boolean, default=True)
+    account_status = Column(String(50), default="active")
+    phone = Column(String(20))
+    password_hash = Column(String(255))
+    profit_pct = Column(Float, default=0.0)
+    bank_account = Column(String(100))
+    brokers = Column(JSON)
+    symbol_multipliers = Column(JSON)
+    created_at = Column(DateTime)
 
-class UserPublic(BaseModel):
-    id: str
-    email: EmailStr
-    name: str
-    role: str
-    tv_webhook_secret: str = ""
-    created_at: datetime
-
-
-class RegisterRequest(BaseModel):
-    email: EmailStr
-    name: str
-    password: str = Field(min_length=6)
-
-
-class LoginRequest(BaseModel):
-    email: EmailStr
-    password: str
-
-
-class TokenResponse(BaseModel):
-    access_token: str
-    token_type: str = "bearer"
-    user: UserPublic
-
-
-# ---------- TradingView signals ----------
-class TVSignal(BaseDocument):
-    user_id: str
-    symbol: str
-    side: str  # BUY / SELL
-    price: float
-    qty: int = 1
-    strategy: str = "tradingview"
-    payload: Dict[str, Any] = Field(default_factory=dict)
-    received_at: datetime = Field(default_factory=utc_now)
-    processed: bool = False
-    order_id: Optional[str] = None
+class MarketCandle(Base):
+    __tablename__ = "market_candles"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    symbol = Column(String(100), index=True)
+    timeframe = Column(String(20), index=True)
+    ts = Column(DateTime, index=True)
+    open = Column(Float)
+    high = Column(Float)
+    low = Column(Float)
+    close = Column(Float)
+    volume = Column(Integer)
 
 
-class TVSignalCreate(BaseModel):
-    symbol: str
-    side: str
-    price: float
-    qty: int = 1
-    strategy: str = "tradingview"
-    alert_id: Optional[str] = None  # for idempotency
-    secret: Optional[str] = None
-    # accept arbitrary additional fields via model_config
-    model_config = ConfigDict(extra="allow")
+class SymbolMaster(Base):
+    __tablename__ = 'symbol_master'
+    symbol = Column(String(100), primary_key=True)
+    lot_size = Column(Integer)
+    exchange = Column(String(50))
 
+class OptionCandle(Base):
+    __tablename__ = "option_candles"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    symbol = Column(String(100), index=True)
+    strike = Column(Float, index=True)
+    opt_type = Column(String(10), index=True)
+    expiry = Column(String(50))
+    ts = Column(DateTime, index=True)
+    ltp = Column(Float)
 
-# ---------- Orders ----------
-class Order(BaseDocument):
-    user_id: str
-    broker: str  # zerodha / breeze / angel / mock
-    symbol: str
-    side: str
-    qty: int
-    price: float
-    order_type: str = "MARKET"  # MARKET / LIMIT
-    product: str = "MIS"
-    status: str = "OPEN"  # OPEN / FILLED / CANCELLED / REJECTED
-    source: str = "manual"  # manual / tradingview / strategy
-    signal_id: Optional[str] = None
-    placed_at: datetime = Field(default_factory=utc_now)
-    filled_at: Optional[datetime] = None
-    pnl: float = 0.0
-    target: Optional[float] = None
-    stop_loss: Optional[float] = None
-    is_bracket: bool = False
+class Order(Base):
+    __tablename__ = "orders"
+    id = Column(String(36), primary_key=True)
+    user_id = Column(String(36), index=True)
+    broker = Column(String(50))
+    broker_order_id = Column(String(100))
+    symbol = Column(String(100))
+    side = Column(String(20))
+    qty = Column(Integer)
+    price = Column(Float)
+    order_type = Column(String(50))
+    product = Column(String(50))
+    status = Column(String(50))
+    source = Column(String(50))
+    signal_id = Column(String(36))
+    placed_at = Column(DateTime)
+    filled_at = Column(DateTime)
+    pnl = Column(Float, default=0.0)
+    target = Column(Float)
+    stop_loss = Column(Float)
+    is_bracket = Column(Boolean, default=False)
+    reject_reason = Column(String(255))
+    is_mock = Column(Boolean, default=False)
 
+class Notification(Base):
+    __tablename__ = "notifications"
+    id = Column(String(36), primary_key=True)
+    user_id = Column(String(36), index=True)
+    kind = Column(String(50))
+    title = Column(String(255))
+    message = Column(String(1000))
+    severity = Column(String(20))
+    read = Column(Boolean, default=False)
+    created_at = Column(DateTime)
 
-class OrderCreate(BaseModel):
-    broker: str = "mock"
-    symbol: str
-    side: str
-    qty: int
-    price: float
-    order_type: str = "MARKET"
-    product: str = "MIS"
-    force_mock: bool = False
-    copy_to_users: bool = True
-    target: Optional[float] = None
-    stop_loss: Optional[float] = None
+class Strategy(Base):
+    __tablename__ = "strategies"
+    id = Column(String(36), primary_key=True)
+    user_id = Column(String(36), index=True)
+    name = Column(String(100))
+    kind = Column(String(50))
+    enabled = Column(Boolean, default=False)
+    copy_to_users = Column(Boolean, default=True)
+    params = Column(JSON)
+    symbols = Column(JSON)
+    fire_count = Column(Integer, default=0)
+    last_fire_at = Column(String(50))
+    created_at = Column(DateTime)
 
+class TVSignal(Base):
+    __tablename__ = "tv_signals"
+    id = Column(String(36), primary_key=True)
+    user_id = Column(String(36), index=True)
+    symbol = Column(String(100))
+    side = Column(String(10))
+    price = Column(Float)
+    qty = Column(Integer)
+    strategy = Column(String(100))
+    payload = Column(JSON)
+    received_at = Column(DateTime)
+    processed = Column(Boolean, default=False)
+    order_id = Column(String(36))
 
-# ---------- Positions ----------
-class Position(BaseDocument):
-    user_id: str
-    symbol: str
-    qty: int  # signed: + long, - short
-    avg_price: float
-    last_price: float = 0.0
-    pnl: float = 0.0
-    updated_at: datetime = Field(default_factory=utc_now)
+class POISnapshot(Base):
+    __tablename__ = "poi_snapshots"
+    date = Column(String(20), primary_key=True)
+    oi_data = Column(JSON)
+    close_data = Column(JSON)
+    updated_at = Column(String(50))
 
+class Idempotency(Base):
+    __tablename__ = "idempotency"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(String(36), index=True)
+    key = Column(String(255), index=True, unique=True)
+    signal_id = Column(String(36))
+    created_at = Column(DateTime)
 
-# ---------- Strategies ----------
-class Strategy(BaseDocument):
-    user_id: str
-    name: str
-    kind: str  # ema_crossover / oi_breakout / vwap_scalping / gamma_scalping / smart_money
-    enabled: bool = False
-    copy_to_users: bool = True
-    params: Dict[str, Any] = Field(default_factory=dict)
-    symbols: List[str] = Field(default_factory=list)
-    fire_count: int = 0
-    last_fire_at: Optional[str] = None
-    created_at: datetime = Field(default_factory=utc_now)
+class Position(Base):
+    __tablename__ = "positions"
+    id = Column(String(36), primary_key=True)
+    user_id = Column(String(36), index=True)
+    symbol = Column(String(100))
+    qty = Column(Integer)
+    avg_price = Column(Float)
+    last_price = Column(Float)
+    updated_at = Column(DateTime)
+    is_mock = Column(Boolean, default=False)
+    
+class TelegramSettings(Base):
+    __tablename__ = "telegram_settings"
+    user_id = Column(String(36), primary_key=True)
+    bot_token = Column(String(1000))
+    chat_id = Column(String(100))
+    enabled = Column(Boolean, default=True)
 
+class PushSettings(Base):
+    __tablename__ = "push_settings"
+    user_id = Column(String(36), primary_key=True)
+    enabled = Column(Boolean, default=True)
 
-class StrategyCreate(BaseModel):
-    name: str
-    kind: str
-    enabled: bool = False
-    copy_to_users: bool = True
-    params: Dict[str, Any] = Field(default_factory=dict)
-    symbols: List[str] = Field(default_factory=list)
-    interval_seconds: int = 15
-
-
-class StrategyUpdate(BaseModel):
-    name: Optional[str] = None
-    enabled: Optional[bool] = None
-    copy_to_users: Optional[bool] = None
-    params: Optional[Dict[str, Any]] = None
-    symbols: Optional[List[str]] = None
-
-
-# ---------- Broker connections (mock) ----------
-class BrokerConnection(BaseDocument):
-    user_id: str
-    broker: str  # zerodha / breeze / angel / fyers / upstox / dhan
-    api_key: str = ""
-    api_secret: str = ""  # never returned in public DTO
-    access_token: str = ""  # daily, encrypted
-    session_date: str = ""  # YYYY-MM-DD IST trading day
-    credentials: Dict[str, Any] = Field(default_factory=dict)  # encrypted blob of extra fields
-    connected: bool = False
-    is_data_feed: bool = False
-    is_order_exec: bool = False
-    mock_mode: bool = True
-    created_at: datetime = Field(default_factory=utc_now)
-
-
-class BrokerConnectionPublic(BaseModel):
-    id: str
-    broker: str
-    connected: bool
-    is_data_feed: bool
-    is_order_exec: bool
-    mock_mode: bool
-    has_keys: bool
-    has_access_token: bool = False
-    session_date: str = ""
-    fields_filled: List[str] = Field(default_factory=list)
-
-
-class BrokerConnectionUpsert(BaseModel):
-    broker: str
-    api_key: str = ""
-    api_secret: str = ""
-    is_data_feed: Optional[bool] = None
-    is_order_exec: Optional[bool] = None
-    mock_mode: Optional[bool] = None
-    credentials: Dict[str, Any] = Field(default_factory=dict)
-
-
-# ---------- Notifications ----------
-class Notification(BaseDocument):
-    user_id: str
-    kind: str  # signal / order / strategy / system
-    title: str
-    message: str
-    severity: str = "info"  # info / success / warning / danger
-    read: bool = False
-    created_at: datetime = Field(default_factory=utc_now)
-
-
-# ---------- Backtest ----------
-class BacktestRun(BaseDocument):
-    user_id: str
-    strategy_kind: str
-    symbol: str
-    period_days: int
-    metrics: Dict[str, Any] = Field(default_factory=dict)
-    equity_curve: List[Dict[str, Any]] = Field(default_factory=list)
-    trades_log: List[Dict[str, Any]] = Field(default_factory=list)
-    created_at: datetime = Field(default_factory=utc_now)
-
-
-class BacktestRequest(BaseModel):
-    strategy_kind: str
-    symbol: str
-    period_days: int = 30
-    params: Dict[str, Any] = Field(default_factory=dict)
-
-
-class SymbolMaster(BaseDocument):
-    symbol: str
-    lot_size: int
-    exchange: str = "NSE"
-
-
-
-# ---------- Market Data (Database equivalent of parquet) ----------
-class MarketCandle(BaseDocument):
-    symbol: str
-    ts: datetime
-    open: float
-    high: float
-    low: float
-    close: float
-    volume: int
-    cum_volume: int
-
-
-# ---------- Managed Users (trader sub-accounts) ----------
-
-# ---------- Managed Users (sub-accounts) ----------
-
-class ManagedUserBroker(BaseModel):
-    """Credentials + session info for one broker belonging to a managed user."""
-    broker: str                            # alice_blue / icici / zerodha / angel / upstox / fyers
-    api_key: str = ""
-    api_secret: str = ""
-    account_number: str = ""              # broker client ID / account number
-    account_password: str = ""            # broker login password / TOTP secret
-    credentials: Dict[str, str] = Field(default_factory=dict) # dynamic broker fields (user_id, totp_secret, session_token, etc.)
-    session_token: str = ""
-    session_generated: bool = False
-    session_date: str = ""
-
-
-class ManagedUser(BaseDocument):
-    trader_id: str                         # references User._id of the owning trader
-    name: str
-    phone: str                             # used as login username
-    password_hash: str
-    bank_account: str = ""
-    brokers: List[ManagedUserBroker] = Field(default_factory=list)
-    place_order: bool = True
-    profit_pct: float = 0.0
-    account_status: str = "active"         # active | deactivated
-    created_at: datetime = Field(default_factory=utc_now)
-
-
-class ManagedUserPublic(BaseModel):
-    id: str
-    trader_id: str
-    name: str
-    phone: str
-    bank_account: str
-    brokers: List[ManagedUserBroker]
-    place_order: bool
-    profit_pct: float
-    account_status: str
-    created_at: datetime
-
-
-class ManagedUserBrokerCreate(BaseModel):
-    broker: str
-    api_key: Optional[str] = ""
-    api_secret: Optional[str] = ""
-    account_number: Optional[str] = ""
-    account_password: Optional[str] = ""
-    credentials: Dict[str, str] = Field(default_factory=dict)
-
-
-class ManagedUserCreate(BaseModel):
-    name: str
-    phone: str
-    password: str
-    bank_account: str = ""
-    brokers: List[ManagedUserBrokerCreate] = Field(default_factory=list)
-    place_order: bool = True
-    profit_pct: float = 0.0
-    account_status: str = "active"
-
-
-class ManagedUserUpdate(BaseModel):
-    name: Optional[str] = None
-    phone: Optional[str] = None
-    password: Optional[str] = None
-    bank_account: Optional[str] = None
-
-    brokers: Optional[List[ManagedUserBrokerCreate]] = None
-    place_order: Optional[bool] = None
-    profit_pct: Optional[float] = None
-    account_status: Optional[str] = None
-
-
-class UserLoginRequest(BaseModel):
-    phone: str
-    password: str
-
+class PushToken(Base):
+    __tablename__ = "push_tokens"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(String(36), index=True)
+    token = Column(String(1000))
+    platform = Column(String(50))
+    
+class BacktestRun(Base):
+    __tablename__ = "backtest_runs"
+    id = Column(String(36), primary_key=True)
+    user_id = Column(String(36), index=True)
+    strategy_kind = Column(String(100))
+    symbol = Column(String(100))
+    period_days = Column(Integer)
+    metrics = Column(JSON)
+    equity_curve = Column(JSON)
+    trades_log = Column(JSON)
+    created_at = Column(DateTime)

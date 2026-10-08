@@ -32,7 +32,7 @@ from services.options_sweeper import options_sweeper  # noqa: E402
 import asyncio
 from services.poi_snapshot import load_snapshot, snapshot_loop
 from services.idempotency import ensure_indexes as ensure_idem_indexes  # noqa: E402
-from db import db  # noqa: E402
+from db import AsyncSessionLocal  # noqa: E402
 
 logging.basicConfig(
     level=logging.INFO,
@@ -45,9 +45,54 @@ logging.getLogger("APILogger").setLevel(logging.WARNING)
 logging.getLogger("breeze_connect").setLevel(logging.WARNING)
 logging.getLogger("WebsocketLogger").setLevel(logging.WARNING)
 
+class EndpointFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        if not record.args: return True
+        msg = str(record.args[0])
+        # Filter out noisy polling endpoints
+        return not any(x in msg for x in [
+            "/api/market/snapshot", 
+            "/api/market/feed-status",
+            "/api/parquet/status",
+            "/api/health",
+            "/api/analytics/premium-matcher"
+        ])
+
+logging.getLogger("uvicorn.access").addFilter(EndpointFilter())
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Download fresh master contracts from AliceBlue on startup
+    import httpx
+    import os
+    try:
+        logger.info("Downloading latest NFO and BFO master contracts...")
+        async with httpx.AsyncClient() as client:
+            res_nfo = await client.get('https://v2api.aliceblueonline.com/restpy/static/contract_master/NFO.csv', timeout=10.0)
+            if res_nfo.status_code == 200:
+                with open(os.path.join(ROOT_DIR, "NFO.csv"), 'wb') as f:
+                    f.write(res_nfo.content)
+            res_bfo = await client.get('https://v2api.aliceblueonline.com/restpy/static/contract_master/BFO.csv', timeout=10.0)
+            if res_bfo.status_code == 200:
+                with open(os.path.join(ROOT_DIR, "BFO.csv"), 'wb') as f:
+                    f.write(res_bfo.content)
+        logger.info("Master contracts downloaded successfully.")
+        # Reload in-memory DataFrames immediately so the running server uses fresh data
+        try:
+            from aliceblue_chain import reload_master_dfs
+            reload_master_dfs()
+            logger.info("In-memory NFO/BFO DataFrames reloaded from fresh CSVs.")
+        except Exception as e:
+            logger.warning(f"reload_master_dfs failed: {e}")
+        # Clear the stale options chain cache so it rebuilds from fresh data
+        from services.options_sweeper import options_sweeper
+        options_sweeper.cache.clear()
+        options_sweeper.last_update.clear()
+        logger.info("Options chain cache cleared — will rebuild from fresh master data.")
+    except Exception as e:
+        logger.warning(f"Failed to download master contracts: {e}")
+
     logger.info("Starting tick engine + market data capture + strategy scheduler")
     tick_engine.start()
     market_data_capture.start()
@@ -58,18 +103,23 @@ async def lifespan(app: FastAPI):
     
     # Snapshot system for POI
     asyncio.create_task(load_snapshot())
-    asyncio.create_task(snapshot_loop())
+    poi_task = asyncio.create_task(snapshot_loop())
+    
+    from services.order_sync import sync_all_orders
+    asyncio.create_task(sync_all_orders())
+    
     try:
         await ensure_idem_indexes()
     except Exception as e:
         logger.warning("idempotency index creation failed: %s", e)
     try:
-        await db.token_blacklist.create_index("expires_at", expireAfterSeconds=0)
+        pass  # ("expires_at", expireAfterSeconds=0)
     except Exception as e:
         logger.warning("token blacklist index creation failed: %s", e)
     if DEMO_USER_ENABLED:
         try:
-            await ensure_demo_user()
+            async with AsyncSessionLocal() as session:
+                await ensure_demo_user(session)
         except Exception as e:
             logger.warning("ensure demo user failed: %s", e)
     else:
@@ -83,6 +133,21 @@ async def lifespan(app: FastAPI):
     strategy_scheduler.stop()
     anomaly_sweeper.stop()
     options_sweeper.stop()
+    live_feed_manager.stop()
+    
+    if 'poi_task' in locals() and not poi_task.done():
+        poi_task.cancel()
+        
+    await asyncio.sleep(0.5)
+    
+    # Properly close all MySQL connections before the event loop closes.
+    # Without this, aiomysql throws "RuntimeError: Event loop is closed" on exit.
+    try:
+        from db import engine as db_engine
+        await db_engine.dispose()
+        logger.info("MySQL connection pool disposed cleanly.")
+    except Exception as e:
+        logger.warning("Error disposing DB engine: %s", e)
 
 
 app = FastAPI(title="Algo Trading Platform", lifespan=lifespan)
@@ -131,3 +196,4 @@ for r in (
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("server:app", host="0.0.0.0", port=8001, reload=True)
+

@@ -139,23 +139,17 @@ export default function ParquetData() {
           <table className="w-full text-xs">
             <thead><tr className="dim text-[10px] uppercase tracking-widest border-b border-[#222]">
               <th className="text-left py-2 px-4">ts</th>
-              <th className="text-right py-2 px-4">open</th>
-              <th className="text-right py-2 px-4">high</th>
-              <th className="text-right py-2 px-4">low</th>
-              <th className="text-right py-2 px-4">close</th>
-              <th className="text-right py-2 px-4">volume</th>
-              <th className="text-right py-2 px-4">cum_vol</th>
+              <th className="text-right py-2 px-4">strike</th>
+              <th className="text-right py-2 px-4">ce_ltp</th>
+              <th className="text-right py-2 px-4">pe_ltp</th>
             </tr></thead>
             <tbody className="cell-divider">
-              {preview.rows.slice().reverse().map((r) => (
-                <tr key={`${r.ts}-${r.symbol}`}>
+              {preview.rows.map((r, i) => (
+                <tr key={i}>
                   <td className="py-2 px-4 mono dim">{fmtDateTime(r.ts)}</td>
                   <td className="py-2 px-4 text-right num">{fmtNum(r.open)}</td>
                   <td className="py-2 px-4 text-right num buy">{fmtNum(r.high)}</td>
                   <td className="py-2 px-4 text-right num sell">{fmtNum(r.low)}</td>
-                  <td className="py-2 px-4 text-right num">{fmtNum(r.close)}</td>
-                  <td className="py-2 px-4 text-right num">{fmtInt(r.volume)}</td>
-                  <td className="py-2 px-4 text-right num dim">{fmtInt(r.cum_volume)}</td>
                 </tr>
               ))}
             </tbody>

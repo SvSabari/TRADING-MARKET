@@ -198,7 +198,15 @@ async def build_option_chain(db=None, user_id: str | None = None, symbol: str = 
             
         if not active_broker:
             # Fallback to database
-            conn = await db.broker_connections.find_one({"user_id": user_id, "is_data_feed": True, "connected": True})
+            from sqlalchemy import select
+            from db import AsyncSessionLocal
+            from models import BrokerConnection
+            async with AsyncSessionLocal() as session:
+                res = await session.execute(select(BrokerConnection).where(BrokerConnection.user_id == user_id, BrokerConnection.connected == True))
+                # For is_data_feed, we might need to check if it has the property, but connected==True is the main filter
+                conn_objs = res.scalars().all()
+                conn_obj = next((c for c in conn_objs if getattr(c, "is_data_feed", False)), None) if conn_objs else None
+                conn = conn_obj.__dict__ if conn_obj else None
             if conn:
                 active_broker = conn.get("broker")
         

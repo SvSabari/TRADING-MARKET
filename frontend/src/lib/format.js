@@ -24,12 +24,12 @@ export const sideColor = (side) => (side?.toUpperCase() === "BUY" ? "#00E676" : 
 
 export const fmtTime = (s) => {
   if (!s) return "—";
-  const d = new Date(s);
+  const d = new Date(s + (!s.endsWith("Z") && !s.includes("+") ? "Z" : ""));
   return d.toLocaleTimeString("en-IN", { hour12: false });
 };
 
 export const fmtDateTime = (s) => {
   if (!s) return "—";
-  const d = new Date(s);
+  const d = new Date(s + (!s.endsWith("Z") && !s.includes("+") ? "Z" : ""));
   return d.toLocaleString("en-IN", { hour12: false });
 };
