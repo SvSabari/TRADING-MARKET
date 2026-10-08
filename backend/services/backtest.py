@@ -571,22 +571,40 @@ async def _fetch_option_premium(symbol: str, spot_price: float, opt_type: str, t
     ohlc = _load_options_ohlc_for_day(symbol, date_str)
     if ohlc.empty: return None, None, None, "NO DATA"
     
+    # 1. Strict Requirement: Expiry must be present
+    if 'expiry' not in ohlc.columns:
+        return None, None, None, "NO DATA"
+        
     minute_ts = ts_utc.replace(second=0, microsecond=0)
     minute_df = ohlc[ohlc['timestamp'] == minute_ts]
     
     if minute_df.empty: return None, None, None, "NO DATA"
     
-    minute_df = minute_df.copy()
-    minute_df['diff'] = (minute_df['strike'] - spot_price).abs()
-    closest_row = minute_df.loc[minute_df['diff'].idxmin()]
+    # 2. Strict Requirement: Exact ATM Calculation (No spot-distance proxy)
+    from services.options_analytics import INDEX_CONFIG
+    step = INDEX_CONFIG.get(symbol, {}).get("step", 50)
+    exact_strike = round(spot_price / step) * step
     
-    prefix = opt_type.lower()
-    ltp = closest_row[f"{prefix}_close"]
-    if pd.isna(ltp) or ltp <= 0:
-        print(f"[MISSING DATA] Could not fetch entry for {symbol} {opt_type} at {minute_ts} UTC. Available minutes in parquet start at: {ohlc['timestamp'].min()} and end at {ohlc['timestamp'].max()}")
+    minute_df = minute_df[minute_df['strike'] == exact_strike]
+    if minute_df.empty: return None, None, None, "NO DATA"
+    
+    row = minute_df.iloc[0]
+    
+    # 3. Strict Requirement: Exact Strike Validation
+    if float(row['strike']) == 0.0 or pd.isna(row['strike']):
+        return None, None, None, "NO DATA"
+        
+    # 4. Strict Requirement: Expiry Validation
+    expiry_val = row.get('expiry')
+    if pd.isna(expiry_val) or not expiry_val:
         return None, None, None, "NO DATA"
     
-    return ltp, float(closest_row['strike']), None, "REAL_EXACT"
+    prefix = opt_type.lower()
+    ltp = row[f"{prefix}_close"]
+    if pd.isna(ltp) or ltp <= 0:
+        return None, None, None, "NO DATA"
+    
+    return ltp, exact_strike, str(expiry_val), "REAL_EXACT"
 
 # ---------------------------------------------------------------------------
 # Position open / close
@@ -696,7 +714,7 @@ async def _close_position(
                 exit_premium = ltp
                 exit_source = source
 
-        pnl = (exit_premium - state.opt_entry_premium) * state.qty * state.position if reason != "MISSING DATA" else 0
+        pnl = (exit_premium - state.opt_entry_premium) * state.qty if reason != "MISSING DATA" else 0
 
         trade = {
             "mode": getattr(state, "_trade_mode", "AUTO"),
@@ -791,8 +809,8 @@ async def _simulate(
             is_options_trade = getattr(state, "is_options_trade", False)
 
             if is_options_trade:
-                target_price = state.opt_entry_premium * (1 + tp_pct) if state.position == 1 else state.opt_entry_premium * (1 - tp_pct)
-                sl_price = state.opt_entry_premium * (1 - sl_pct) if state.position == 1 else state.opt_entry_premium * (1 + sl_pct)
+                target_price = state.opt_entry_premium * (1 + tp_pct)
+                sl_price = state.opt_entry_premium * (1 - sl_pct)
                 
                 # Fetch exact OHLC from parquet for this minute
                 ts_utc = _ts_to_utc(ts_vals[i]).replace(second=0, microsecond=0)
@@ -812,12 +830,8 @@ async def _simulate(
                 if opt_high is not None and not pd.isna(opt_high):
                     hit_target = False
                     hit_sl = False
-                    if state.position == 1:
-                        if opt_high >= target_price: hit_target = True
-                        if opt_low <= sl_price: hit_sl = True
-                    else:
-                        if opt_low <= target_price: hit_target = True
-                        if opt_high >= sl_price: hit_sl = True
+                    if opt_high >= target_price: hit_target = True
+                    if opt_low <= sl_price: hit_sl = True
                         
                     if hit_sl:
                         reason = "SL"
