@@ -71,11 +71,11 @@ async def lifespan(app: FastAPI):
         async with httpx.AsyncClient() as client:
             res_nfo = await client.get('https://v2api.aliceblueonline.com/restpy/static/contract_master/NFO.csv', timeout=10.0)
             if res_nfo.status_code == 200:
-                with open(os.path.join(ROOT_DIR, "NFO.csv"), 'wb') as f:
+                with open(str(ROOT_DIR / "NFO.csv"), 'wb') as f:
                     f.write(res_nfo.content)
             res_bfo = await client.get('https://v2api.aliceblueonline.com/restpy/static/contract_master/BFO.csv', timeout=10.0)
             if res_bfo.status_code == 200:
-                with open(os.path.join(ROOT_DIR, "BFO.csv"), 'wb') as f:
+                with open(str(ROOT_DIR / "BFO.csv"), 'wb') as f:
                     f.write(res_bfo.content)
         logger.info("Master contracts downloaded successfully.")
         # Reload in-memory DataFrames immediately so the running server uses fresh data
@@ -86,7 +86,6 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.warning(f"reload_master_dfs failed: {e}")
         # Clear the stale options chain cache so it rebuilds from fresh data
-        from services.options_sweeper import options_sweeper
         options_sweeper.cache.clear()
         options_sweeper.last_update.clear()
         logger.info("Options chain cache cleared — will rebuild from fresh master data.")

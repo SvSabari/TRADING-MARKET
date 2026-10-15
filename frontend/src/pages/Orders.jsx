@@ -96,15 +96,15 @@ export default function Orders() {
       </Panel>
 
       <Panel title="Executions" kicker={`${displayedOrders.length} orders`}>
-        <div className="flex border-b border-gray-200">
+        <div className="flex border-b border-[var(--border)] bg-[#181C27]">
           <button 
-            className={`flex-1 py-2.5 text-xs font-bold tracking-wider transition-colors ${tab === 'real' ? 'border-b-2 border-[#14532d] text-[#14532d] bg-green-50/30' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50'}`} 
+            className={`flex-1 py-2.5 text-xs font-bold tracking-wider transition-colors ${tab === 'real' ? 'border-b-2 border-[#089981] text-[#089981] bg-[rgba(8,153,129,0.12)]' : 'text-[#9FA4B2] hover:text-[#FFFFFF] hover:bg-[rgba(255,255,255,0.04)]'}`} 
             onClick={() => setTab('real')}
           >
             REAL TRADES
           </button>
           <button 
-            className={`flex-1 py-2.5 text-xs font-bold tracking-wider transition-colors border-l border-gray-100 ${tab === 'mock' ? 'border-b-2 border-orange-500 text-orange-600 bg-orange-50/30' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50'}`} 
+            className={`flex-1 py-2.5 text-xs font-bold tracking-wider transition-colors border-l border-[var(--border)] ${tab === 'mock' ? 'border-b-2 border-[#FF9800] text-[#FF9800] bg-[rgba(255,152,0,0.12)]' : 'text-[#9FA4B2] hover:text-[#FFFFFF] hover:bg-[rgba(255,255,255,0.04)]'}`} 
             onClick={() => setTab('mock')}
           >
             PAPER TRADES (MOCK)
@@ -112,7 +112,7 @@ export default function Orders() {
         </div>
         <div className="w-full overflow-hidden">
           <table className="w-full text-xs">
-          <thead><tr className="dim text-[10px] uppercase tracking-widest border-b border-[#222]">
+          <thead><tr className="dim text-[10px] uppercase tracking-widest border-b border-[var(--border)]">
             <th className="text-left py-2 px-2">Time</th>
             <th className="text-left py-2 px-2">Symbol</th>
             <th className="text-left py-2 px-2">Side</th>

@@ -60,16 +60,16 @@ export default function OptionChain() {
             onChange={(e) => setSymbol(e.target.value)}
             className="terminal !w-32 cursor-pointer !py-2"
           >
-            <option disabled value="" className="bg-white text-gray-500">Equities</option>
-            {equities.map((s) => <option key={s} value={s} className="bg-white text-black">{s}</option>)}
+            <option disabled value="" className="bg-[#1E222D] text-[#787B86]">Equities</option>
+            {equities.map((s) => <option key={s} value={s} className="bg-[#1E222D] text-[#D1D4DC]">{s}</option>)}
           </select>
           <select 
             value={indices.includes(symbol) ? symbol : ""}
             onChange={(e) => setSymbol(e.target.value)}
             className="terminal !w-36 cursor-pointer !py-2"
           >
-            <option disabled value="" className="bg-white text-gray-500">Indices</option>
-            {indices.map((s) => <option key={s} value={s} className="bg-white text-black">{s}</option>)}
+            <option disabled value="" className="bg-[#1E222D] text-[#787B86]">Indices</option>
+            {indices.map((s) => <option key={s} value={s} className="bg-[#1E222D] text-[#D1D4DC]">{s}</option>)}
           </select>
           {chain.available_expiries && chain.available_expiries.length > 0 && (
             <select
@@ -78,17 +78,17 @@ export default function OptionChain() {
               className="terminal !w-40 cursor-pointer !py-2"
             >
               {chain.available_expiries.map((exp) => (
-                <option key={exp} value={exp} className="bg-white text-black">{exp}</option>
+                <option key={exp} value={exp} className="bg-[#1E222D] text-[#D1D4DC]">{exp}</option>
               ))}
             </select>
           )}
           
-          <label className="flex items-center gap-2 cursor-pointer ml-auto bg-blue-50 text-blue-700 px-3 py-1.5 rounded-full border border-blue-200 hover:bg-blue-100 transition-colors">
+          <label className="flex items-center gap-2 cursor-pointer ml-auto bg-[var(--surface)] text-[var(--text-primary)] px-3 py-1.5 rounded-full border border-[var(--border)] hover:bg-[var(--surface-hover)] transition-colors">
             <input
               type="checkbox"
               checked={strategyMode}
               onChange={(e) => setStrategyMode(e.target.checked)}
-              className="accent-blue-600"
+              className="accent-[var(--brand)]"
             />
             <span className="text-sm font-bold">Strategy Builder</span>
           </label>

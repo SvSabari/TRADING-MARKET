@@ -38,7 +38,7 @@ export default function ChainTable({ chain, strategyMode = false, onAddLeg }) {
               return "dim";
             };
             return (
-              <tr key={r.strike} className={atm ? "bg-gray-200" : ""} data-testid={`oc-row-${r.strike}`}>
+              <tr key={r.strike} className={atm ? "bg-[#252A37]" : "hover:bg-[rgba(255,255,255,0.02)] transition-colors"} data-testid={`oc-row-${r.strike}`}>
                 <td className="py-2 px-3 !text-right num dim">{fmtInt(r.ce_oi)}</td>
                 <td className="py-2 px-3 !text-right">
                   <div className="num">{r.ce_change_oi > 0 ? "+" : ""}{fmtInt(r.ce_change_oi)}</div>
@@ -90,16 +90,16 @@ export default function ChainTable({ chain, strategyMode = false, onAddLeg }) {
 export function GreeksGrid({ row }) {
   const ce = row?.ce_greeks || {}; const pe = row?.pe_greeks || {};
   const cell = (label, c, p, decimals = 4) => (
-    <div className="bg-white p-4" key={label}>
+    <div className="bg-[var(--surface)] p-3 border border-[var(--border)] rounded" key={label}>
       <div className="dim text-[10px] mono uppercase tracking-widest">{label}</div>
       <div className="grid grid-cols-2 gap-2 mt-1">
-        <div><span className="dim text-[10px] mono">CE</span> <span className="num text-sm">{c !== undefined ? fmtNum(c, decimals) : "—"}</span></div>
-        <div><span className="dim text-[10px] mono">PE</span> <span className="num text-sm">{p !== undefined ? fmtNum(p, decimals) : "—"}</span></div>
+        <div><span className="dim text-[10px] mono">CE</span> <span className="num text-sm text-[var(--text-primary)] font-bold">{c !== undefined ? fmtNum(c, decimals) : "—"}</span></div>
+        <div><span className="dim text-[10px] mono">PE</span> <span className="num text-sm text-[var(--text-primary)] font-bold">{p !== undefined ? fmtNum(p, decimals) : "—"}</span></div>
       </div>
     </div>
   );
   return (
-    <div className="grid grid-cols-2 md:grid-cols-5 gap-px bg-gray-300" data-testid="greeks-grid">
+    <div className="grid grid-cols-2 md:grid-cols-5 gap-2 p-1" data-testid="greeks-grid">
       {cell("Delta", ce.delta, pe.delta, 3)}
       {cell("Gamma", ce.gamma, pe.gamma, 5)}
       {cell("Theta (/day)", ce.theta, pe.theta, 2)}

@@ -21,20 +21,20 @@
 .app-shell.left-collapsed.right-collapsed {
     grid-template-columns: 0px 1fr 0px;
 }
-.app-sidebar { grid-area: sidebar; background: #005440; border-right: none; overflow-y: auto; overflow-x: hidden; transition: opacity 300ms; color: white; }
+.app-sidebar { grid-area: sidebar; background: #131722; border-right: 1px solid var(--border); overflow-y: auto; overflow-x: hidden; transition: opacity 300ms; color: var(--text-primary); }
 .app-shell.left-collapsed .app-sidebar { opacity: 0; pointer-events: none; }
-.app-topbar  { grid-area: topbar; background: #005440; border-bottom: none; display:flex; align-items:center; padding: 0 16px; gap: 16px; color: white; }
-.app-ticker  { grid-area: ticker; overflow: hidden; background: var(--surface); }
-.app-main    { grid-area: main; position: relative; display: flex; flex-direction: column; overflow: hidden; background: #F3F5F4; }
-.app-right-sidebar { grid-area: right-sidebar; overflow: hidden; background: #F3F5F4; border-left: 1px solid var(--border); }
-.app-status  { grid-area: statusbar; border-top: 1px solid var(--border); background: var(--surface); display:flex; align-items:center; padding: 0 16px; gap: 16px; font-family: "JetBrains Mono", monospace; font-size: 11px; color: var(--text-muted); overflow: visible; white-space: nowrap; scrollbar-width: none; }
+.app-topbar  { grid-area: topbar; background: #181C27; border-bottom: 1px solid var(--border); display:flex; align-items:center; padding: 0 16px; gap: 16px; color: var(--text-primary); }
+.app-ticker  { grid-area: ticker; overflow: hidden; background: #181C27; border-bottom: 1px solid var(--border); }
+.app-main    { grid-area: main; position: relative; display: flex; flex-direction: column; overflow: hidden; background: #131722; }
+.app-right-sidebar { grid-area: right-sidebar; overflow: hidden; background: #181C27; border-left: 1px solid var(--border); }
+.app-status  { grid-area: statusbar; border-top: 1px solid var(--border); background: #131722; display:flex; align-items:center; padding: 0 16px; gap: 16px; font-family: "JetBrains Mono", monospace; font-size: 11px; color: var(--text-muted); overflow: visible; white-space: nowrap; scrollbar-width: none; }
 .app-status::-webkit-scrollbar { display: none; }
 
 .sidebar-link {
     display: flex; align-items: center; gap: 10px;
     padding: 8px 16px;
     border-left: 3px solid transparent;
-    color: #FFFFFF;
+    color: #B2B7C4;
     font-family: "Outfit", sans-serif;
     font-size: 12px;
     font-weight: 600;
@@ -45,12 +45,13 @@
     margin: 2px 8px;
     border-radius: 6px;
 }
-.sidebar-link:hover { background: rgba(255, 255, 255, 0.1); color: #ffffff; }
+.sidebar-link:hover { background: rgba(255, 255, 255, 0.08); color: #FFFFFF; }
 .sidebar-link.active { 
-    background: #FFFFFF; 
-    color: #005440; 
-    border-left-color: transparent; 
+    background: #1E222D; 
+    color: #2962FF; 
+    border-left-color: #2962FF; 
     font-weight: 700;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
 }
 
 .ticker-row { 

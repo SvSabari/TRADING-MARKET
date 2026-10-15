@@ -79,22 +79,22 @@ export default function SignalExplainModal({ signal, onClose }) {
                   {r.reasoning}
                 </div>
               </div>
-              <div className="grid grid-cols-3 gap-px bg-gray-300">
-                <div className="bg-white p-3">
-                  <div className="dim text-[10px] uppercase tracking-widest mono">Stop loss</div>
-                  <div className="mt-1 num text-base sell" data-testid="signal-explain-sl">
+              <div className="grid grid-cols-3 gap-px bg-[var(--border)] border border-[var(--border)] rounded overflow-hidden">
+                <div className="bg-[#181C28] p-3">
+                  <div className="text-[#CBD5E1] text-[10px] uppercase tracking-widest mono font-bold">Stop loss</div>
+                  <div className="mt-1 num text-base sell font-bold" data-testid="signal-explain-sl">
                     ₹{fmtNum(r.suggested_sl)}
                   </div>
                 </div>
-                <div className="bg-white p-3">
-                  <div className="dim text-[10px] mono uppercase tracking-widest">Target</div>
-                  <div className="mt-1 num text-base buy" data-testid="signal-explain-tgt">
+                <div className="bg-[#181C28] p-3">
+                  <div className="text-[#CBD5E1] text-[10px] mono uppercase tracking-widest font-bold">Target</div>
+                  <div className="mt-1 num text-base buy font-bold" data-testid="signal-explain-tgt">
                     ₹{fmtNum(r.suggested_target)}
                   </div>
                 </div>
-                <div className="bg-white p-3">
-                  <div className="dim text-[10px] mono uppercase tracking-widest">R : R</div>
-                  <div className="mt-1 num text-base">{fmtNum(r.risk_reward)}</div>
+                <div className="bg-[#181C28] p-3">
+                  <div className="text-[#CBD5E1] text-[10px] mono uppercase tracking-widest font-bold">R : R</div>
+                  <div className="mt-1 num text-base text-white font-bold">{fmtNum(r.risk_reward)}</div>
                 </div>
               </div>
               <div className="flex items-center justify-between border-t border-[#222] pt-3">

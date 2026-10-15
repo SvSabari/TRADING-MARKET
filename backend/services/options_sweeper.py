@@ -46,7 +46,8 @@ class OptionSweeper:
             df = pd.DataFrame(chain["rows"])
             df["symbol"] = symbol
             df["spot"] = chain.get("spot", 0.0)
-                        df['atm'] = chain.get('atm', 0.0)
+
+            df["atm"] = chain.get("atm", 0.0)
             df['expiry'] = chain.get('expiry', '26OCT')
             df["timestamp"] = pd.Timestamp.utcnow()
             

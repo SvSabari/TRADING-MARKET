@@ -327,24 +327,59 @@ async def mirror_order_to_managed_users(db, trader_id: str, master_order: Order)
 
         async def _place_for_user(mu: ManagedUser, b: ManagedUserBroker):
             import uuid
+            from services.capital_service import get_managed_user_capital_metrics, calculate_required_funds
+
             fill = {}
             error_reason = ""
-            
+            status = "PENDING"
+
+            # -------------------------------------------------------------
+            # Gate 5: Capital Allocation & Margin Check before order placement
+            # -------------------------------------------------------------
+            check_session = AsyncSessionLocal()
             try:
-                fill = await _route_for_managed_user_broker(
-                    db, mu, b,
+                cap_metrics = await get_managed_user_capital_metrics(check_session, mu)
+                available_cap = cap_metrics.get("available_amount", 0.0)
+                alloc_amt = cap_metrics.get("allocated_amount", 0.0)
+                used_amt = cap_metrics.get("amount_used", 0.0)
+
+                required_funds = calculate_required_funds(
                     symbol=master_order.symbol,
                     side=master_order.side,
                     qty=master_order.qty,
                     price=master_order.price,
-                    order_type=master_order.order_type,
                     product=master_order.product,
-                    force_mock=(master_order.broker == "mock")
                 )
-            except Exception as e:
-                logger.error("[mirror] Failed for managed user=%s name=%s broker=%s: %s", mu.id, mu.name, b.broker, e)
-                error_reason = str(e)
-                fill = {"status": "REJECTED", "fill_price": master_order.price, "mode": "failed"}
+
+                if required_funds > available_cap:
+                    error_reason = (
+                        f"Exceeds permitted capital allocation: Required ₹{required_funds:,.2f} > "
+                        f"Available ₹{available_cap:,.2f} (Allocated: ₹{alloc_amt:,.2f}, Used: ₹{used_amt:,.2f})"
+                    )
+                    logger.warning("[mirror] CAPITAL REJECTION for user=%s (%s): %s", mu.id, mu.name, error_reason)
+                    fill = {"status": "REJECTED", "fill_price": master_order.price, "reject_reason": error_reason, "mode": "capital_limit"}
+            except Exception as cap_err:
+                logger.error("[mirror] Capital calculation check error for user=%s: %s", mu.id, cap_err)
+            finally:
+                await check_session.close()
+
+            # If capital limit rejected, do not route to broker
+            if not fill.get("status") == "REJECTED":
+                try:
+                    fill = await _route_for_managed_user_broker(
+                        db, mu, b,
+                        symbol=master_order.symbol,
+                        side=master_order.side,
+                        qty=master_order.qty,
+                        price=master_order.price,
+                        order_type=master_order.order_type,
+                        product=master_order.product,
+                        force_mock=(master_order.broker == "mock")
+                    )
+                except Exception as e:
+                    logger.error("[mirror] Failed for managed user=%s name=%s broker=%s: %s", mu.id, mu.name, b.broker, e)
+                    error_reason = str(e)
+                    fill = {"status": "REJECTED", "fill_price": master_order.price, "mode": "failed"}
 
             status = fill.get("status", "FILLED").upper()
             if error_reason and status != "REJECTED":
@@ -388,6 +423,12 @@ async def mirror_order_to_managed_users(db, trader_id: str, master_order: Order)
                 save_session.add(mirrored)
                 save_session.add(notif)
                 await save_session.commit()
+                
+                # If order filled, update managed user positions table
+                if status == "FILLED":
+                    from routers.order_routes import _upsert_position
+                    await _upsert_position(save_session, mu.id, mirrored)
+
                 logger.info("[mirror] Order placed for user=%s name=%s broker=%s - STATUS: %s", mu.id, mu.name, b.broker, status)
             except Exception as se:
                 logger.error("[mirror] DB save failed for user=%s: %s", mu.id, se)

@@ -27,32 +27,39 @@ export default function CandleChart({ data, symbol, interval, indicators = [] })
 
     const chart = createChart(chartContainerRef.current, {
       layout: {
-        background: { type: ColorType.Solid, color: "transparent" },
-        textColor: "#333",
+        background: { type: ColorType.Solid, color: "#131722" },
+        textColor: "#9FA4B2",
       },
       grid: {
-        vertLines: { color: "#e0e0e0" },
-        horzLines: { color: "#e0e0e0" },
+        vertLines: { color: "rgba(42, 46, 57, 0.6)" },
+        horzLines: { color: "rgba(42, 46, 57, 0.6)" },
       },
-      timeScale: { timeVisible: true, secondsVisible: false },
-      rightPriceScale: { scaleMargins: { top: 0.15, bottom: 0.25 } },
+      timeScale: { 
+        timeVisible: true, 
+        secondsVisible: false,
+        borderColor: "#2A2E39",
+      },
+      rightPriceScale: { 
+        scaleMargins: { top: 0.15, bottom: 0.25 },
+        borderColor: "#2A2E39",
+      },
       autoSize: true,
       crosshair: {
-        vertLine: { visible: false, labelVisible: false },
-        horzLine: { visible: false, labelVisible: false },
+        vertLine: { visible: true, labelVisible: true, color: "rgba(255, 255, 255, 0.2)", width: 1, style: 2 },
+        horzLine: { visible: true, labelVisible: true, color: "rgba(255, 255, 255, 0.2)", width: 1, style: 2 },
       },
     });
     chartRef.current = chart;
 
     const candlestickSeries = chart.addSeries(CandlestickSeries, {
-      upColor: "#26a69a", downColor: "#ef5350", borderVisible: true,
-      borderUpColor: "#26a69a", borderDownColor: "#ef5350",
-      wickUpColor: "#26a69a", wickDownColor: "#ef5350",
+      upColor: "#089981", downColor: "#F23645", borderVisible: true,
+      borderUpColor: "#089981", borderDownColor: "#F23645",
+      wickUpColor: "#089981", wickDownColor: "#F23645",
     });
     seriesRef.current = candlestickSeries;
 
     const volumeSeries = chart.addSeries(HistogramSeries, {
-      color: '#26a69a', priceFormat: { type: 'volume' }, priceScaleId: '',
+      color: '#089981', priceFormat: { type: 'volume' }, priceScaleId: '',
     });
     volumeSeries.priceScale().applyOptions({ scaleMargins: { top: 0.85, bottom: 0 } });
     volumeSeriesRef.current = volumeSeries;
@@ -66,7 +73,7 @@ export default function CandleChart({ data, symbol, interval, indicators = [] })
 
       if (currentData) {
         const { open, high, low, close } = currentData;
-        const color = close >= open ? '#26a69a' : '#ef5350';
+        const color = close >= open ? '#089981' : '#F23645';
         const change = close - open;
         const changePct = (change / open) * 100;
         const sign = change >= 0 ? '+' : '';
@@ -96,25 +103,25 @@ export default function CandleChart({ data, symbol, interval, indicators = [] })
              const d = param.seriesData.get(obj.series);
              valStr = d ? d.value.toFixed(2) : 'N/A';
            }
-           indHtml += `<span style="color: ${obj.color}">${obj.type}${obj.period ? obj.period : ''} <strong>${valStr}</strong></span>`;
+           indHtml += `<span style="color: ${obj.color}; margin-right: 8px;">${obj.type}${obj.period ? obj.period : ''} <strong style="color: ${obj.color};">${valStr}</strong></span>`;
         });
 
         legendRef.current.innerHTML = `
-          <div style="display: flex; flex-direction: column; gap: 4px;">
-            <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap; line-height: 1;">
-              <div style="font-weight: 600; font-size: 13px; display: flex; align-items: center; gap: 4px; text-shadow: -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff, 0 0 4px #fff;">
-                ${symbol || 'SYMBOL'} <span style="color: #888">·</span> ${interval}m <span style="color: #888">·</span> NSE
+          <div style="display: flex; flex-direction: column; gap: 4px; pointer-events: none;">
+            <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap; line-height: 1;">
+              <div style="font-weight: 700; font-size: 13px; color: #FFFFFF; display: flex; align-items: center; gap: 5px;">
+                ${symbol || 'SYMBOL'} <span style="color: #6D7385">·</span> <span style="color: #B2B7C4">${interval}m</span> <span style="color: #6D7385">·</span> <span style="color: #8C91A0">NSE</span>
                 <span style="display:inline-block; width:6px; height:6px; border-radius:50%; background-color:${color}; margin-left: 2px;"></span>
               </div>
-              <div style="font-size: 12px; font-family: monospace; display: flex; gap: 8px; text-shadow: -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff, 0 0 4px #fff;">
-                <span>O <span>${open.toFixed(2)}</span></span>
-                <span>H <span>${high.toFixed(2)}</span></span>
-                <span>L <span>${low.toFixed(2)}</span></span>
-                <span>C <span>${close.toFixed(2)} <span style="margin-left: 4px;">${sign}${change.toFixed(2)} (${sign}${changePct.toFixed(2)}%)</span></span></span>
+              <div style="font-size: 12px; font-family: monospace; display: flex; gap: 8px; color: #D1D4DC;">
+                <span>O <span style="color: #FFFFFF; font-weight: 600;">${open.toFixed(2)}</span></span>
+                <span>H <span style="color: #FFFFFF; font-weight: 600;">${high.toFixed(2)}</span></span>
+                <span>L <span style="color: #FFFFFF; font-weight: 600;">${low.toFixed(2)}</span></span>
+                <span>C <span style="color: ${color}; font-weight: 700;">${close.toFixed(2)} <span style="margin-left: 4px;">${sign}${change.toFixed(2)} (${sign}${changePct.toFixed(2)}%)</span></span></span>
               </div>
             </div>
-            <div style="font-size: 11px; font-family: monospace; display: flex; gap: 8px; flex-wrap: wrap; text-shadow: -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff, 0 0 4px #fff;">
-              <span style="color: #333">Vol <span>${volFmt}</span></span>
+            <div style="font-size: 11px; font-family: monospace; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 2px;">
+              <span style="color: #9FA4B2">Vol <span style="color: #FFFFFF; font-weight: 600;">${volFmt}</span></span>
               ${indHtml}
             </div>
           </div>

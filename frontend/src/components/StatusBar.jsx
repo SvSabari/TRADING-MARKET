@@ -63,19 +63,19 @@ export default function StatusBar() {
                 · {feed.live_symbol_count}/56
               </span>
               {showLive && feed.live_symbols && (
-                <div className="absolute bottom-full mb-2 left-0 w-56 bg-white border border-gray-300 rounded shadow-2xl z-50 text-left cursor-default overflow-hidden flex flex-col">
-                  <div className="text-gray-500 font-bold px-3 py-2 border-b border-gray-300 text-[10px] uppercase tracking-wider bg-gray-100">
+                <div className="absolute bottom-full mb-2 left-0 w-56 bg-[#181C28] border border-[var(--border)] rounded-md shadow-2xl z-50 text-left cursor-default overflow-hidden flex flex-col">
+                  <div className="text-[#60A5FA] font-bold px-3 py-2 border-b border-[var(--border)] text-[10px] uppercase tracking-wider bg-[#141722]">
                     Live Data Feed ({feed.live_symbol_count})
                   </div>
                   <div className="flex flex-col max-h-64 overflow-y-auto custom-scrollbar">
                     {feed.live_symbols.map(s => (
-                      <div key={s} className="px-3 py-2 text-[11px] text-gray-800 hover:bg-gray-100 border-b border-gray-300 last:border-0 transition-colors flex items-center gap-2">
-                        <span className="w-1.5 h-1.5 rounded-full bg-[#00E676]"></span>
-                        <span className="font-mono">{s}</span>
+                      <div key={s} className="px-3 py-2 text-[12px] text-white hover:bg-[#262B38] border-b border-[var(--border)] last:border-0 transition-colors flex items-center gap-2">
+                        <span className="w-1.5 h-1.5 rounded-full bg-[#089981]"></span>
+                        <span className="font-mono font-bold text-white">{s}</span>
                       </div>
                     ))}
                     {feed.live_symbol_count === 0 && (
-                      <div className="px-3 py-4 text-center text-[#555] text-[10px] italic">No active streams</div>
+                      <div className="px-3 py-4 text-center text-[#BAC0D0] text-[10px] italic">No active streams</div>
                     )}
                   </div>
                 </div>
@@ -83,10 +83,16 @@ export default function StatusBar() {
             </span>
           ) : ""}
         </span>
-        {feed?.feed?.last_error && (
+        {feed?.feed?.last_error && !feed?.feed?.connected && (
           <>
             <span className="dim">·</span>
-            <span className="sell font-bold animate-pulse truncate max-w-[200px]" title={feed.feed.last_error}>⚠️ BROKER ERROR</span>
+            <a
+              href="/brokers"
+              className="sell font-bold animate-pulse hover:underline cursor-pointer inline-flex items-center gap-1"
+              title={`${feed.feed.last_error} (Click to open Brokers page)`}
+            >
+              ⚠️ SESSION ERROR
+            </a>
           </>
         )}
         <span className="dim">·</span>

@@ -174,6 +174,8 @@ class BrokerConnectionPublic(BaseModel):
     has_keys: bool
     has_access_token: bool = False
     session_date: str = ""
+    session_status: str = ""
+    last_error: Optional[str] = None
     fields_filled: List[str] = Field(default_factory=list)
 
 
@@ -263,6 +265,7 @@ class ManagedUser(BaseModel):
     place_order: bool = True
     profit_pct: float = 0.0
     account_status: str = "active"         # active | deactivated
+    capital_allocation_pct: float = 100.0
     created_at: datetime = Field(default_factory=utc_now)
 
 
@@ -276,6 +279,8 @@ class ManagedUserPublic(BaseModel):
     place_order: bool
     profit_pct: float
     account_status: str
+    capital_allocation_pct: float = 100.0
+    enrollment_date: Optional[str] = None
     created_at: datetime
 
 
@@ -297,6 +302,7 @@ class ManagedUserCreate(BaseModel):
     place_order: bool = True
     profit_pct: float = 0.0
     account_status: str = "active"
+    capital_allocation_pct: float = 100.0
 
 
 class ManagedUserUpdate(BaseModel):
@@ -309,6 +315,7 @@ class ManagedUserUpdate(BaseModel):
     place_order: Optional[bool] = None
     profit_pct: Optional[float] = None
     account_status: Optional[str] = None
+    capital_allocation_pct: Optional[float] = None
 
 
 class UserLoginRequest(BaseModel):

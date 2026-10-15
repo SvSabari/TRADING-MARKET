@@ -151,7 +151,69 @@ async def get_data_preview(path: str, limit: int = 100):
     return {"rows": docs}
 
 
+
+@router.get("/chart/{symbol}")
+async def get_chart_data(symbol: str, interval: str = "1", session: AsyncSession = Depends(get_db)):
+    from datetime import datetime, timezone, timedelta
+    import pandas as pd
+    
+    now = datetime.now(timezone.utc)
+    # Get all of today's market candles
+    start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    
+    stmt = select(MarketCandle).where(
+        MarketCandle.symbol == symbol.upper(),
+        MarketCandle.ts >= start_of_day
+    ).order_by(MarketCandle.ts.asc())
+    
+    res = await session.execute(stmt)
+    candles = res.scalars().all()
+    
+    if not candles:
+        return {"rows": []}
+        
+    df = pd.DataFrame([{
+        "ts": c.ts.replace(tzinfo=timezone.utc),
+        "open": c.open,
+        "high": c.high,
+        "low": c.low,
+        "close": c.close,
+        "volume": c.volume
+    } for c in candles])
+    
+    df.set_index("ts", inplace=True)
+    
+    resample_map = {
+        "1": "1min",
+        "5": "5min",
+        "15": "15min",
+        "D": "D"
+    }
+    rule = resample_map.get(str(interval), "1min")
+    
+    resampled = df.resample(rule).agg({
+        "open": "first",
+        "high": "max",
+        "low": "min",
+        "close": "last",
+        "volume": "sum"
+    }).dropna()
+    
+    rows = []
+    for ts, row in resampled.iterrows():
+        rows.append({
+            "ts": ts.isoformat(),
+            "open": float(row["open"]),
+            "high": float(row["high"]),
+            "low": float(row["low"]),
+            "close": float(row["close"]),
+            "volume": int(row["volume"])
+        })
+        
+    return {"rows": rows}
+
 @router.get("/download")
+
 async def download_parquet(path: str):
     import os, io, pandas as pd
     from fastapi import HTTPException

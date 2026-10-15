@@ -38,6 +38,7 @@ class ManagedUser(Base):
     bank_account = Column(String(100))
     brokers = Column(JSON)
     symbol_multipliers = Column(JSON)
+    capital_allocation_pct = Column(Float, default=100.0)
     created_at = Column(DateTime)
 
 class MarketCandle(Base):

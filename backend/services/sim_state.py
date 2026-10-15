@@ -31,3 +31,4 @@ class SimState:
     _symbol: str = ""
     _trade_mode: str = "NONE"
     _signal_ts: str = ""
+    _entry_ts: str = ""

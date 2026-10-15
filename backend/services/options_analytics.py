@@ -224,11 +224,25 @@ async def build_option_chain(db=None, user_id: str | None = None, symbol: str = 
             from services.brokers.aliceblue_client import get_user_aliceblue_client
             from aliceblue_chain import build_aliceblue_chain
             alice = await get_user_aliceblue_client(db, user_id)
-            if alice is not None:
-                live = await build_aliceblue_chain(alice, symbol, expiry)
-                if live is not None:
-                    _compute_iv_and_greeks(live["rows"], live["spot"])
-                    return live
+            if alice is None:
+                # If logged-in trader user has no direct credentials, check for system/active data feed connection
+                from sqlalchemy import select
+                from models import BrokerConnection
+                res_conn = await db.execute(
+                    select(BrokerConnection).where(
+                        BrokerConnection.broker == "aliceblue",
+                        BrokerConnection.connected == True
+                    )
+                )
+                any_conn = res_conn.scalars().first()
+                if any_conn:
+                    alice = await get_user_aliceblue_client(db, any_conn.user_id)
+
+            # Even if REST alice client is None, AliceBlue option chain builds from master CSV + WebSocket live feed
+            live = await build_aliceblue_chain(alice, symbol, expiry)
+            if live is not None:
+                _compute_iv_and_greeks(live["rows"], live["spot"])
+                return live
                     
         elif active_broker == "breeze":
             from breeze_chain import build_breeze_chain

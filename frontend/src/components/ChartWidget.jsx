@@ -99,7 +99,7 @@ export default function ChartWidget({
       const loadData = async (isInitial = false) => {
         if (isInitial) setIsLoading(true);
         try {
-          const { data } = await api.get(`/parquet/preview?path=${encodeURIComponent(localSymbol)}&limit=500&interval=${localInterval}&today_only=true`);
+          const { data } = await api.get(`/parquet/chart/${encodeURIComponent(localSymbol)}?interval=${localInterval}`);
           setChartData(data.rows || []);
         } catch (e) {
           console.error("Failed to load chart data", e);

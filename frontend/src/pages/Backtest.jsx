@@ -211,6 +211,7 @@ export default function Backtest() {
       };
 
       if (form.qty) extraParams.qty = form.qty;
+      if (form.trade_options) extraParams.trade_options = form.trade_options;
 
       
 
@@ -257,6 +258,7 @@ export default function Backtest() {
       };
 
       if (form.qty) extraParams.qty = form.qty;
+      if (form.trade_options) extraParams.trade_options = form.trade_options;
 
 
 
@@ -417,23 +419,14 @@ export default function Backtest() {
           </div>
 
           <div>
-
-            <label style={{ display: "block", fontSize: 10, fontFamily: "JetBrains Mono", color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>Timeframe</label>
-
-            <select className="terminal" value={form.timeframe || "1min"}
-
-              onChange={e => setForm({ ...form, timeframe: e.target.value })}>
-
-              <option value="1min">1 Min</option>
-
-              <option value="5min">5 Min</option>
-
-              <option value="15min">15 Min</option>
-
-              <option value="60min">1 Hour</option>
-
+            <label style={{ display: "block", fontSize: 10, fontFamily: "JetBrains Mono", color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>Trade Mode</label>
+            <select className="terminal" value={form.trade_options || "NONE"}
+              onChange={e => setForm({ ...form, trade_options: e.target.value })}>
+              <option value="NONE">Stock / Index</option>
+              <option value="AUTO">Options - Auto</option>
+              <option value="CE">Options - Force CE</option>
+              <option value="PE">Options - Force PE</option>
             </select>
-
           </div>
 
           <div>
@@ -498,15 +491,17 @@ export default function Backtest() {
 
         </div>
 
-        {dataInfo && (
-
-          <div style={{ padding: "0 16px 8px", fontSize: 11, color: "var(--text-secondary)", fontFamily: "JetBrains Mono" }}>
-
-            <span style={{ color: "var(--primary)" }}>{form.trade_options ? (dataInfo.options_days || 0) : (dataInfo.equity_days || dataInfo.days || 0)} days</span> of {form.trade_options ? "options data" : "tick data"} available in DB for {form.symbol}
-
-          </div>
-
-        )}
+        {dataInfo && (() => {
+          const isOptions = form.trade_options && form.trade_options !== "NONE";
+          const rawDays = isOptions ? (dataInfo.options_days || 0) : (dataInfo.equity_days || dataInfo.days || 0);
+          const displayDays = Math.round(rawDays);
+          const dataType = isOptions ? "Options" : "Stock / Index";
+          return (
+            <div style={{ padding: "0 16px 8px", fontSize: 11, color: "var(--text-secondary)", fontFamily: "JetBrains Mono" }}>
+              <span style={{ color: "var(--primary)" }}>{displayDays} days</span> of {dataType} data available in DB for {form.symbol}
+            </div>
+          );
+        })()}
 
         <div style={{ padding: "0 16px 16px", display: "flex", alignItems: "center", gap: 12 }}>
 
@@ -572,7 +567,14 @@ export default function Backtest() {
 
               <MetricBadge label="Final Equity" value={fmtRupee(m.final_equity)} neutral />
 
-              <MetricBadge label="Total Trades" value={m.trades} neutral />
+              <MetricBadge label="Executed Trades" value={m.trades} neutral />
+
+              {(m.missing_entry_count > 0 || m.missing_exit_count > 0) && (
+                <>
+                  <MetricBadge label="Missing Entry" value={m.missing_entry_count || 0} neutral />
+                  <MetricBadge label="Missing Exit" value={m.missing_exit_count || 0} neutral />
+                </>
+              )}
 
               <MetricBadge label="Best Trade" value={fmtRupee(bestTrade)} positive />
 
@@ -668,23 +670,25 @@ export default function Backtest() {
 
                     <tr className="dim text-[10px] uppercase tracking-widest border-b border-[#222]">
 
-                      <th className="text-left py-2 px-4">#</th>
+                      <th className="text-left py-2 px-3">#</th>
 
-                      <th className="text-left py-2 px-4">Side</th>
+                      <th className="text-left py-2 px-3">Side</th>
 
-                        <th className="text-right py-2 px-4">Inst</th>
+                      <th className="text-left py-2 px-3">Inst</th>
 
-                        <th className="text-right py-2 px-4">Entry</th>
+                      <th className="text-right py-2 px-3">Entry</th>
 
-                        <th className="text-right py-2 px-4">Exit</th>
+                      <th className="text-right py-2 px-3">Exit</th>
 
-                      <th className="text-right py-2 px-4">Qty</th>
+                      <th className="text-right py-2 px-3">Qty</th>
 
-                        <th className="text-right py-2 px-4">P&L</th>
+                      <th className="text-right py-2 px-3">P&L</th>
 
-                        <th className="text-left py-2 px-4">Reason</th>
+                      <th className="text-left py-2 px-3">Reason</th>
 
-                      <th className="text-left py-2 px-4">Time</th>
+                      <th className="text-left py-2 px-3">Entry Time</th>
+
+                      <th className="text-left py-2 px-3">Exit Time</th>
 
                     </tr>
 
@@ -702,45 +706,59 @@ export default function Backtest() {
 
                         <tr key={i}>
 
-                          <td className="py-2 px-4 dim mono">{i + 1}</td>
+                          <td className="py-2 px-3 dim mono">{i + 1}</td>
 
-                          <td className={`py-2 px-4 mono font-bold ${t.side === "BUY" ? "buy" : "sell"}`}>{t.side}</td>
+                          <td className="py-2 px-3 mono">
+                            <span className={`font-bold ${t.side === "BUY" ? "buy" : "sell"}`}>{t.side}</span>
+                            {t.type && (t.type === "CE" || t.type === "PE") && (
+                              <div className="text-[9px] dim mt-0.5">
+                                Sig: <span style={{ color: t.signal === "BUY" ? "var(--success)" : "var(--danger)" }}>{t.signal}</span>
+                              </div>
+                            )}
+                          </td>
 
-                            <td className="py-2 px-4 text-right mono">
+                          <td className="py-2 px-3 text-left mono">
+                            <div className="font-semibold text-white">
+                              {t.mode === "NONE" || t.type === "EQ" || !t.type ? (t.symbol || form.symbol) : `${t.strike || "-"} ${t.type}`}
+                            </div>
+                            {t.expiry && <div className="text-[9px] dim">{t.expiry}</div>}
+                          </td>
 
-                              {t.type ? `${t.strike || "—"} ${t.type}` : "EQ"}
+                          <td className="py-2 px-3 text-right num">
 
-                              {t.expiry && <div className="text-[9px] dim">{t.expiry}</div>}
+                            {t.entry_source === "NO DATA" ? "—" : fmtRupee(t.entry_premium || t.entry)}
 
-                            </td>
+                            {t.strike && <div className="text-[10px] dim">Idx: {fmtNum(t.index_entry)}</div>}
 
-                            <td className="py-2 px-4 text-right num">
+                            {t.entry_source && <div style={{ fontSize: 9, color: srcColor(t.entry_source), fontFamily: "JetBrains Mono", fontWeight: 700 }}>{srcLabel(t.entry_source)}</div>}
 
-                              {t.entry_source === "NO DATA" ? "—" : fmtRupee(t.entry_premium || t.entry)}
+                          </td>
 
-                              {t.strike && <div className="text-[10px] dim">Idx: {fmtNum(t.index_entry)}</div>}
+                          <td className="py-2 px-3 text-right num">
 
-                              {t.entry_source && <div style={{ fontSize: 9, color: srcColor(t.entry_source), fontFamily: "JetBrains Mono", fontWeight: 700 }}>{srcLabel(t.entry_source)}</div>}
+                            {t.exit_source === "NO DATA" || (t.qty === 0 && t.reason === "MISSING DATA") ? "—" : fmtRupee(t.exit_premium || t.exit)}
 
-                            </td>
+                            {t.strike && <div className="text-[10px] dim">Idx: {fmtNum(t.index_exit)}</div>}
 
-                            <td className="py-2 px-4 text-right num">
+                            {t.exit_source && <div style={{ fontSize: 9, color: srcColor(t.exit_source), fontFamily: "JetBrains Mono", fontWeight: 700 }}>{srcLabel(t.exit_source)}</div>}
 
-                              {t.exit_source === "NO DATA" || (t.qty === 0 && t.reason === "MISSING DATA") ? "—" : fmtRupee(t.exit_premium || t.exit)}
+                          </td>
 
-                              {t.strike && <div className="text-[10px] dim">Idx: {fmtNum(t.index_exit)}</div>}
+                          <td className="py-2 px-3 text-right num dim">{t.qty}</td>
 
-                              {t.exit_source && <div style={{ fontSize: 9, color: srcColor(t.exit_source), fontFamily: "JetBrains Mono", fontWeight: 700 }}>{srcLabel(t.exit_source)}</div>}
+                          <td className={`py-2 px-3 text-right num font-bold ${t.pnl > 0.01 ? "buy" : t.pnl < -0.01 ? "sell" : "dim"}`}>
+                            {t.pnl > 0.01 ? "+" : ""}{Math.abs(t.pnl || 0) < 0.01 ? "₹0.00" : fmtRupee(t.pnl)}
+                          </td>
 
-                            </td>
+                          <td className="py-2 px-3 text-left dim text-[10px] uppercase">{t.reason || "Strategy"}</td>
 
-                          <td className="py-2 px-4 text-right num dim">{t.qty}</td>
+                          <td className="py-2 px-3 mono dim whitespace-nowrap" style={{ fontSize: 10 }}>
+                            {String(t.entry_ts || t.ts || "").slice(0, 16)}
+                          </td>
 
-                            <td className={`py-2 px-4 text-right num font-bold ${t.pnl >= 0 ? "buy" : "sell"}`}>{t.pnl >= 0 ? "+" : ""}{fmtRupee(t.pnl)}</td>
-
-                            <td className="py-2 px-4 text-left dim text-[10px] uppercase">{t.reason || "Strategy"}</td>
-
-                          <td className="py-2 px-4 mono dim" style={{ fontSize: 10 }}>{String(t.ts || "").slice(0, 16)}</td>
+                          <td className="py-2 px-3 mono dim whitespace-nowrap" style={{ fontSize: 10 }}>
+                            {String(t.exit_ts || t.ts || "").slice(0, 16)}
+                          </td>
 
                         </tr>
 
@@ -750,7 +768,7 @@ export default function Backtest() {
 
                     {trades.length === 0 && (
 
-                        <tr><td colSpan={9} className="p-8 text-center dim text-xs">No trades generated. Try a longer period or different symbol.</td></tr>
+                        <tr><td colSpan={10} className="p-8 text-center dim text-xs">No trades generated. Try a longer period or different symbol.</td></tr>
 
                     )}
 

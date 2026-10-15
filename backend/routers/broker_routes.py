@@ -33,16 +33,39 @@ ALL_BROKERS = list(BROKER_SCHEMAS.keys())
 def _to_public(b: BrokerConnection) -> BrokerConnectionPublic:
     creds = b.credentials or {}
     api_key = creds.get("api_key") or getattr(b, "api_key", None)
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    has_token = bool(b.access_token)
+    session_date = b.session_date or ""
+    
+    if not has_token or not session_date:
+        session_status = "not_generated"
+    elif session_date != today:
+        session_status = "expired"
+    else:
+        session_status = "active"
+
+    error_msg = None
+    if not b.connected and (has_token or bool(api_key) or any(creds.values()) or b.is_data_feed or b.is_order_exec):
+        if session_status == "not_generated":
+            error_msg = "Daily session not generated"
+        elif session_status == "expired":
+            error_msg = f"Session expired on {session_date}"
+        else:
+            error_msg = "Broker disconnected"
+
     return BrokerConnectionPublic(
         id=str(b.id),
         broker=str(b.broker),
-        connected=bool(b.connected),
+        connected=bool(b.connected and session_status == "active"),
         is_data_feed=bool(b.is_data_feed),
         is_order_exec=bool(b.is_order_exec),
         mock_mode=bool(b.mock_mode) if b.mock_mode is not None else True,
         has_keys=bool(api_key) or any(creds.values()),
-        has_access_token=bool(b.access_token),
-        session_date=b.session_date or "",
+        has_access_token=has_token,
+        session_date=session_date,
+        session_status=session_status,
+        last_error=error_msg,
         fields_filled=sorted([k for k, v in creds.items() if v]),
     )
 
@@ -1041,7 +1064,7 @@ async def aliceblue_history(
                 "BANKNIFTY": ("26009", "NSE::index"),
                 "FINNIFTY": ("26037", "NSE::index"),
                 "MIDCPNIFTY": ("26074", "NSE::index"),
-                "SENSEX": ("51", "BSE"),
+                "SENSEX": ("1", "BSE::index"),
                 "NIFTYNXT50": ("26013", "NSE::index"),
             }
             if token.upper() in INDEX_MAP:
@@ -1085,26 +1108,48 @@ async def aliceblue_history(
             "exchange": exchange,
         }
 
-        # Aliceblue base URL for history
-        url = "https://ant.aliceblueonline.com/rest/AliceBlueAPIService/api/chart/history"
+        # AliceBlue A3 Open API for history with fallback to ANT API
+        a3_url = "https://a3.aliceblueonline.com/open-api/od/ChartAPIService/api/chart/history"
+        token_to_use = getattr(client, "_a3_token", None) or client._alice.session_id
         headers = {
-            "X-SAS-Version": "2.0",
-            "Authorization": f"Bearer {client._alice.user_id} {client._alice.session_id}",
+            "Authorization": f"Bearer {token_to_use}",
             "Content-Type": "application/json",
         }
 
-        async with httpx.AsyncClient() as c:
-            resp = await c.post(url, headers=headers, json=payload)
-
+        async with httpx.AsyncClient(timeout=15) as c:
+            resp = await c.post(a3_url, headers=headers, json=payload)
+            data = {}
             try:
                 data = resp.json()
             except Exception:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"AliceBlue API failed (Status {resp.status_code}). Please try again after 5:30 PM."
-                )
+                pass
 
-            if "stat" in data and data["stat"] == "Not_Ok":
+            # If token exchange or endpoint failed, fallback to ant URL
+            if data.get("stat") != "Ok":
+                ant_url = "https://ant.aliceblueonline.com/rest/AliceBlueAPIService/api/chart/history"
+                ant_headers = {
+                    "X-SAS-Version": "2.0",
+                    "Authorization": f"Bearer {client._alice.user_id.upper()} {client._alice.session_id}",
+                    "Content-Type": "application/json",
+                }
+                resp = await c.post(ant_url, headers=ant_headers, json=payload)
+                try:
+                    data = resp.json()
+                except Exception:
+                    data = {}
+
+            if data.get("stat") != "Ok":
+                # Special retry for SENSEX on BSE without ::index
+                if "SENSEX" in symbol.upper():
+                    payload_alt = dict(payload)
+                    payload_alt["exchange"] = "BSE"
+                    resp = await c.post(a3_url, headers=headers, json=payload_alt)
+                    try:
+                        data = resp.json()
+                    except Exception:
+                        pass
+
+            if data.get("stat") != "Ok":
                 raise HTTPException(
                     status_code=400,
                     detail=data.get("emsg", "Failed to load AliceBlue historical data")

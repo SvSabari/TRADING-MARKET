@@ -77,12 +77,21 @@ async def _load_symbol_data(symbol: str, period_days: int) -> pd.DataFrame:
 
             docs = [
                 {"ts": r.ts, "open": r.open, "high": r.high,
-                 "low": r.low, "close": r.close, "volume": r.volume}
+                 "low": r.low, "close": r.close, "volume": r.volume,
+                 "timeframe": r.timeframe}
                 for r in rows
             ]
             df = pd.DataFrame(docs)
             df["ts"] = pd.to_datetime(df["ts"], errors="coerce")
             df = df.dropna(subset=["ts"]).sort_values("ts").reset_index(drop=True)
+            # Timezone classification:
+            # - '1min' batch candles were recorded directly in IST (09:15 - 15:30).
+            # - '5s' tick streaming candles and legacy NULL timeframe candles were captured in UTC (03:45 - 10:00 UTC); convert by +5:30.
+            if not df.empty:
+                utc_mask = df["timeframe"].isna() | (df["timeframe"] == "5s")
+                df.loc[utc_mask, "ts"] = df.loc[utc_mask, "ts"] + pd.Timedelta(hours=5, minutes=30)
+                # Drop duplicate timestamps if any overlap occurred across timeframe streams
+                df = df.drop_duplicates(subset=["ts"]).sort_values("ts").reset_index(drop=True)
             return df
 
     except Exception as e:
@@ -517,7 +526,8 @@ def _ts_to_utc(ts_str: str) -> datetime:
         dt = datetime.fromisoformat(ts_str.replace("Z", "+00:00")).replace(tzinfo=None)
     except Exception:
         dt = datetime.fromisoformat(str(ts_str))
-    return dt
+    # Timestamps in df are localized to IST, so subtract 5h30m to query UTC-indexed parquet files
+    return dt - timedelta(hours=5, minutes=30)
 
 # ---------------------------------------------------------------------------
 # Parquet OHLC Caching
@@ -551,11 +561,12 @@ def _load_options_ohlc_for_day(symbol: str, date_str: str) -> pd.DataFrame:
         df.set_index('timestamp', inplace=True)
         
         ohlc = df.groupby('strike').resample('1min').agg({
+            'expiry': ['first'],
             'ce_ltp': ['first', 'max', 'min', 'last'],
             'pe_ltp': ['first', 'max', 'min', 'last']
         }).reset_index()
         
-        ohlc.columns = ['strike', 'timestamp', 
+        ohlc.columns = ['strike', 'timestamp', 'expiry',
                         'ce_open', 'ce_high', 'ce_low', 'ce_close',
                         'pe_open', 'pe_high', 'pe_low', 'pe_close']
                         
@@ -566,45 +577,58 @@ def _load_options_ohlc_for_day(symbol: str, date_str: str) -> pd.DataFrame:
         _PARQUET_CACHE[cache_key] = pd.DataFrame()
         return _PARQUET_CACHE[cache_key]
 
-async def _fetch_option_premium(symbol: str, spot_price: float, opt_type: str, ts_utc: datetime) -> tuple:
+async def _fetch_option_premium(symbol: str, spot_price: float, opt_type: str, ts_utc: datetime, exact_strike: float = None, required_expiry: str = None) -> tuple:
     date_str = ts_utc.strftime("%Y-%m-%d")
     ohlc = _load_options_ohlc_for_day(symbol, date_str)
     if ohlc.empty: return None, None, None, "NO DATA"
     
-    # 1. Strict Requirement: Expiry must be present
     if 'expiry' not in ohlc.columns:
         return None, None, None, "NO DATA"
         
     minute_ts = ts_utc.replace(second=0, microsecond=0)
     minute_df = ohlc[ohlc['timestamp'] == minute_ts]
     
-    if minute_df.empty: return None, None, None, "NO DATA"
+    if minute_df.empty: 
+        return None, None, None, "NO DATA"
     
-    # 2. Strict Requirement: Exact ATM Calculation (No spot-distance proxy)
-    from services.options_analytics import INDEX_CONFIG
-    step = INDEX_CONFIG.get(symbol, {}).get("step", 50)
-    exact_strike = round(spot_price / step) * step
+    if exact_strike is not None:
+        target_strike = float(exact_strike)
+    else:
+        from services.options_analytics import INDEX_CONFIG
+        step = INDEX_CONFIG.get(symbol, {}).get("step") if symbol in INDEX_CONFIG else None
+        if step:
+            target_strike = round(spot_price / step) * step
+        else:
+            available_strikes = minute_df['strike'].dropna().unique()
+            if len(available_strikes) > 0:
+                target_strike = min(available_strikes, key=lambda s: abs(s - spot_price))
+            else:
+                target_strike = round(spot_price / 10) * 10
     
-    minute_df = minute_df[minute_df['strike'] == exact_strike]
-    if minute_df.empty: return None, None, None, "NO DATA"
+    minute_df = minute_df[minute_df['strike'] == target_strike]
+    if minute_df.empty: 
+        return None, None, None, "NO DATA"
+    
+    if required_expiry:
+        minute_df = minute_df[minute_df['expiry'] == str(required_expiry)]
+        if minute_df.empty:
+            return None, None, None, "NO DATA"
     
     row = minute_df.iloc[0]
     
-    # 3. Strict Requirement: Exact Strike Validation
     if float(row['strike']) == 0.0 or pd.isna(row['strike']):
         return None, None, None, "NO DATA"
         
-    # 4. Strict Requirement: Expiry Validation
     expiry_val = row.get('expiry')
     if pd.isna(expiry_val) or not expiry_val:
         return None, None, None, "NO DATA"
     
     prefix = opt_type.lower()
-    ltp = row[f"{prefix}_close"]
+    ltp = row.get(f"{prefix}_close")
     if pd.isna(ltp) or ltp <= 0:
         return None, None, None, "NO DATA"
     
-    return ltp, exact_strike, str(expiry_val), "REAL_EXACT"
+    return ltp, target_strike, str(expiry_val), "REAL_EXACT"
 
 # ---------------------------------------------------------------------------
 # Position open / close
@@ -644,9 +668,13 @@ async def _open_position(
 
         if ltp is None or ltp <= 0:
             state.trades_log.append({
+                "symbol": symbol.upper(),
                 "mode": trade_mode,
                 "signal": "BUY" if side == 1 else "SELL",
-                "side": "BUY" if side == 1 else "SELL",
+                "side": "BUY",
+                "signal_ts": getattr(state, "_signal_ts", ts_str),
+                "entry_ts": ts_str,
+                "exit_ts": ts_str,
                 "index_entry": round(fill, 2),
                 "index_exit": round(fill, 2),
                 "strike": 0,
@@ -659,7 +687,7 @@ async def _open_position(
                 "qty": 0,
                 "pnl": 0,
                 "ts": ts_str,
-                "reason": "MISSING DATA",
+                "reason": "ENTRY DATA MISSING",
             })
             return
 
@@ -678,6 +706,7 @@ async def _open_position(
         state.position = side
         state.qty = qty
         state.entry_price = fill
+        state._entry_ts = ts_str
 
     else:
         if fixed_qty and int(fixed_qty) > 0:
@@ -688,6 +717,7 @@ async def _open_position(
         state.position = side
         state.entry_price = fill
         state.qty = qty
+        state._entry_ts = ts_str
 
 async def _close_position(
     state: SimState, fill: float, ts_str: str, reason: str = None, exact_premium: float = None, final: bool = False
@@ -704,22 +734,31 @@ async def _close_position(
         else:
             ts_utc = _ts_to_utc(ts_str)
             ltp, _, _, source = await _fetch_option_premium(
-                state._symbol, state.opt_strike, state.opt_type, ts_utc
+                state._symbol,
+                fill,
+                state.opt_type,
+                ts_utc,
+                exact_strike=state.opt_strike,
+                required_expiry=getattr(state, "opt_expiry", None),
             )
             if ltp is None or ltp <= 0:
                 exit_premium = 0
                 exit_source = "NO DATA"
-                reason = "MISSING DATA"
+                reason = "EXIT DATA MISSING"
             else:
                 exit_premium = ltp
                 exit_source = source
 
-        pnl = (exit_premium - state.opt_entry_premium) * state.qty if reason != "MISSING DATA" else 0
+        pnl = (exit_premium - state.opt_entry_premium) * state.qty if reason != "EXIT DATA MISSING" else 0
 
         trade = {
+            "symbol": getattr(state, "_symbol", ""),
             "mode": getattr(state, "_trade_mode", "AUTO"),
-            "side": "BUY" if state.position == 1 else "SELL",
+            "signal": "BUY" if state.position == 1 else "SELL",
+            "side": "BUY",
             "signal_ts": getattr(state, "_signal_ts", ts_str),
+            "entry_ts": getattr(state, "_entry_ts", ts_str),
+            "exit_ts": ts_str,
             "index_entry": round(state.index_entry, 2),
             "index_exit": round(fill, 2),
             "strike": state.opt_strike,
@@ -729,19 +768,24 @@ async def _close_position(
             "exit_premium": round(exit_premium, 2),
             "entry_source": getattr(state, "opt_entry_source", "?"),
             "exit_source": exit_source,
-            "qty": state.qty if exit_source != "NO DATA" else 0,
+            "qty": state.qty,
             "pnl": round(pnl, 2),
             "ts": ts_str,
             "reason": reason or ("EOD" if final else "Strategy"),
         }
     else:
-        pnl = (fill - state.entry_price) * state.qty * state.position
+        exit_price = exact_premium if exact_premium is not None else fill
+        pnl = (exit_price - state.entry_price) * state.qty * state.position
         trade = {
+            "symbol": getattr(state, "_symbol", ""),
             "mode": getattr(state, "_trade_mode", "NONE"),
+            "signal": "BUY" if state.position == 1 else "SELL",
             "side": "BUY" if state.position == 1 else "SELL",
             "signal_ts": getattr(state, "_signal_ts", ts_str),
+            "entry_ts": getattr(state, "_entry_ts", ts_str),
+            "exit_ts": ts_str,
             "entry": round(state.entry_price, 2),
-            "exit": round(fill, 2),
+            "exit": round(exit_price, 2),
             "qty": state.qty,
             "pnl": round(pnl, 2),
             "ts": ts_str,
@@ -749,7 +793,7 @@ async def _close_position(
         }
 
     state.equity += pnl
-    if reason != "MISSING DATA":
+    if reason not in ("MISSING DATA", "ENTRY DATA MISSING", "EXIT DATA MISSING"):
         state.trades += 1
         if pnl > 0:
             state.wins += 1
@@ -781,7 +825,7 @@ async def _simulate(
     state._symbol = symbol.upper()
     state._trade_mode = trade_mode
 
-    square_off_times = ["09:45:00", "09:50:00", "09:55:00"]
+    square_off_times = ["15:15:00", "15:20:00", "15:25:00", "15:29:00"]
 
     sig_vals = signals.values
     close_vals = df["close"].values
@@ -822,10 +866,13 @@ async def _simulate(
                 
                 if not ohlc.empty:
                     minute_df = ohlc[(ohlc['timestamp'] == ts_utc) & (ohlc['strike'] == state.opt_strike)]
+                    if getattr(state, "opt_expiry", None):
+                        minute_df = minute_df[minute_df['expiry'] == str(state.opt_expiry)]
                     if not minute_df.empty:
                         prefix = state.opt_type.lower()
                         opt_high = minute_df.iloc[0][f"{prefix}_high"]
                         opt_low = minute_df.iloc[0][f"{prefix}_low"]
+                        opt_close = minute_df.iloc[0][f"{prefix}_close"]
                 
                 if opt_high is not None and not pd.isna(opt_high):
                     hit_target = False
@@ -835,10 +882,10 @@ async def _simulate(
                         
                     if hit_sl:
                         reason = "SL"
-                        exact_exit = round(sl_price, 2)
+                        exact_exit = opt_close
                     elif hit_target:
                         reason = "Target"
-                        exact_exit = round(target_price, 2)
+                        exact_exit = opt_close
                     elif is_eod:
                         reason = "EOD"
                 elif is_eod:
@@ -850,10 +897,10 @@ async def _simulate(
                 hit_sl = bar_low <= sl_price if state.position == 1 else bar_high >= sl_price
                 if hit_sl:
                     reason = "SL"
-                    exact_exit = round(sl_price, 2)
+                    exact_exit = float(close_vals[i])
                 elif hit_target:
                     reason = "Target"
-                    exact_exit = round(target_price, 2)
+                    exact_exit = float(close_vals[i])
                 elif is_eod:
                     reason = "EOD"
 
@@ -884,6 +931,9 @@ async def _simulate(
     sigma = math.sqrt(sum((r - mu) ** 2 for r in pct_rets) / len(pct_rets)) or 1e-6
     annualised = mu / sigma * math.sqrt(252 * 6.5 * 60)
 
+    missing_entries = sum(1 for t in state.trades_log if t.get("reason") in ("MISSING DATA", "ENTRY DATA MISSING"))
+    missing_exits = sum(1 for t in state.trades_log if t.get("reason") == "EXIT DATA MISSING")
+
     return {
         "metrics": {
             "total_return_pct": round((state.equity / 100000.0 - 1) * 100, 2),
@@ -893,6 +943,8 @@ async def _simulate(
             "max_drawdown_pct": round(state.max_dd * 100, 2),
             "sharpe": round(annualised, 2),
             "bars": len(df),
+            "missing_entry_count": missing_entries,
+            "missing_exit_count": missing_exits,
         },
         "equity_curve": state.curve[::max(1, len(state.curve) // 200)],
         "trades_log": state.trades_log,

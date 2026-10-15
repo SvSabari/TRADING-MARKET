@@ -4,9 +4,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy import func
 
+from datetime import datetime, timezone
+
 from auth import get_current_user
 from constants import NIFTY_50, ALL_SYMBOLS
-from models import User, SymbolMaster
+from models import User, SymbolMaster, BrokerConnection
 from services.market_data import tick_engine
 from db import get_db
 
@@ -79,14 +81,55 @@ async def top_movers(n: int = 10, user: User = Depends(get_current_user)):
 
 
 @router.get("/feed-status")
-async def feed_status(user: User = Depends(get_current_user)):
-    """Return status of live feed."""
+async def feed_status(
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db)
+):
+    """Return status of live feed and any primary broker session errors."""
     from services.live_feed_manager import live_feed_manager
     st = live_feed_manager.status()
-    if st.get("active_user_id") != user.id:
+
+    # Check if this user has a primary data feed broker configured
+    stmt = select(BrokerConnection).where(
+        BrokerConnection.user_id == user.id,
+        BrokerConnection.is_data_feed == True
+    )
+    res = await session.execute(stmt)
+    primary_conn = res.scalar_one_or_none()
+
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    if primary_conn:
+        st["primary_broker"] = primary_conn.broker
+        has_token = bool(primary_conn.access_token)
+        sess_date = primary_conn.session_date or ""
+
+        # Check if session is missing or expired for today
+        session_err = None
+        if not has_token or not sess_date:
+            session_err = f"Session not generated for {primary_conn.broker.title()} (Click Reconnect)"
+        elif sess_date != today:
+            session_err = f"{primary_conn.broker.title()} session expired on {sess_date} (Click Reconnect)"
+        elif not primary_conn.connected:
+            session_err = f"{primary_conn.broker.title()} is disconnected (Click Reconnect)"
+
+        if session_err:
+            if not st.get("feed"):
+                st["feed"] = {
+                    "connected": False,
+                    "last_error": session_err,
+                    "broker": primary_conn.broker
+                }
+            else:
+                if not st["feed"].get("connected"):
+                    st["feed"]["last_error"] = st["feed"].get("last_error") or session_err
+                    st["feed"]["broker"] = primary_conn.broker
+
+    if st.get("active_user_id") and st.get("active_user_id") != user.id:
         st["source"] = "none"
         st["active_broker"] = None
         st["active_user_id"] = None
+
     return st
 
 @router.get("/debug-prices")

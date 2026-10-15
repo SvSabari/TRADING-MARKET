@@ -228,6 +228,7 @@ class AliceblueFeed(LiveFeed):
         original_run_forever = pya3.alicebluepy.Aliceblue._Aliceblue__ws_run_forever if hasattr(pya3.alicebluepy.Aliceblue, "_Aliceblue__ws_run_forever") else None
         
         feed_self = self
+        import time as py_time
         def custom_ws_run_forever(self_instance):
             while not self_instance._Aliceblue__stop_event.is_set():
                 if getattr(feed_self, "token_expired", False):
@@ -236,6 +237,7 @@ class AliceblueFeed(LiveFeed):
                 try:
                     self_instance.ws.run_forever(ping_interval=3, ping_timeout=2)
                 except Exception as e:
+                    feed_self.last_error = str(e)
                     logger.warning(f"websocket run forever ended in exception, {e}")
                 py_time.sleep(5)  # Add 5s delay between reconnect attempts instead of 0.1s
 

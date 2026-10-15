@@ -61,11 +61,21 @@ def _to_public(mu: ManagedUserModel) -> ManagedUserPublic:
             if getattr(b, "session_date", "") != today_str:
                 b.session_generated = False
 
+    enrollment_date = None
+    if mu.created_at:
+        enrollment_date = mu.created_at.strftime("%Y-%m-%d")
+
+    alloc_pct = getattr(mu, "capital_allocation_pct", 100.0)
+    if alloc_pct is None:
+        alloc_pct = 100.0
+
     return ManagedUserPublic(
         id=mu.id, trader_id=mu.trader_id, name=mu.name, phone=getattr(mu, "phone", "") or getattr(mu, "email", ""), # model uses email
         bank_account=getattr(mu, "bank_account", ""),
         brokers=parsed_brokers, place_order=getattr(mu, "place_order", True),
         profit_pct=getattr(mu, "profit_pct", 0.0), account_status=getattr(mu, "account_status", "active"),
+        capital_allocation_pct=float(alloc_pct),
+        enrollment_date=enrollment_date,
         created_at=mu.created_at or datetime.now(timezone.utc),
     )
 
@@ -190,6 +200,7 @@ async def create_managed_user(body: ManagedUserCreate, trader: UserPublic = Depe
         bank_account=body.bank_account,
         place_order=body.place_order,
         account_status=body.account_status,
+        capital_allocation_pct=body.capital_allocation_pct if body.capital_allocation_pct is not None else 100.0,
         brokers=broker_objs,
         created_at=datetime.now(timezone.utc)
     )
@@ -203,6 +214,7 @@ async def create_managed_user(body: ManagedUserCreate, trader: UserPublic = Depe
     mu.place_order = getattr(body, "place_order", True)
     mu.profit_pct = getattr(body, "profit_pct", 0.0)
     mu.account_status = getattr(body, "account_status", "active")
+    mu.capital_allocation_pct = getattr(body, "capital_allocation_pct", 100.0)
     
     return _to_public(mu)
 
@@ -245,6 +257,8 @@ async def update_managed_user(user_id: str, body: ManagedUserUpdate, trader: Use
         doc.profit_pct = body.profit_pct
     if body.account_status is not None:
         doc.account_status = body.account_status
+    if body.capital_allocation_pct is not None:
+        doc.capital_allocation_pct = body.capital_allocation_pct
 
     if body.brokers is not None:
         existing_brokers = getattr(doc, "brokers", []) or []
@@ -298,6 +312,50 @@ async def delete_managed_user(user_id: str, trader: UserPublic = Depends(get_cur
         raise HTTPException(status_code=404, detail="User not found")
     await db.commit()
     return {"deleted": True}
+
+
+@router.get("/capital-metrics")
+async def get_all_capital_metrics(
+    trader: UserPublic = Depends(get_current_trader),
+    db: AsyncSession = Depends(get_db)
+):
+    """Fetch live capital metrics for all managed users belonging to trader."""
+    from services.capital_service import get_managed_user_capital_metrics
+    res = await db.execute(select(ManagedUserModel).where(ManagedUserModel.trader_id == trader.id))
+    users = res.scalars().all()
+    metrics_map = {}
+    for u in users:
+        try:
+            m = await get_managed_user_capital_metrics(db, u)
+            metrics_map[u.id] = m
+        except Exception as e:
+            metrics_map[u.id] = {
+                "user_id": u.id,
+                "enrollment_date": u.created_at.strftime("%Y-%m-%d") if u.created_at else None,
+                "capital_allocation_pct": getattr(u, "capital_allocation_pct", 100.0) or 100.0,
+                "total_account_funds": 0.0,
+                "allocated_amount": 0.0,
+                "amount_used": 0.0,
+                "available_amount": 0.0,
+                "error": str(e)
+            }
+    return {"metrics": metrics_map}
+
+
+@router.get("/{user_id}/capital-metrics")
+async def get_user_capital_metrics(
+    user_id: str,
+    trader: UserPublic = Depends(get_current_trader),
+    db: AsyncSession = Depends(get_db)
+):
+    """Fetch live capital metrics for a specific managed user."""
+    from services.capital_service import get_managed_user_capital_metrics
+    res = await db.execute(select(ManagedUserModel).where(ManagedUserModel.id == user_id, ManagedUserModel.trader_id == trader.id))
+    u = res.scalars().first()
+    if not u:
+        raise HTTPException(status_code=404, detail="User not found")
+    metrics = await get_managed_user_capital_metrics(db, u)
+    return {"metrics": metrics}
 
 
 @router.get("/eligibility")

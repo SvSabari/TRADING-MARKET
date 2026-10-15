@@ -153,30 +153,30 @@ export default function PremiumMatcher({ preset, showSymbolColumn }) {
                 </tr>
               ) : (
                 pairs.map((p, idx) => (
-                  <tr key={`${p.symbol}-${p.callStrike}-${p.putStrike}-${idx}`} className="border-b border-[#EBE3DB] bg-white hover:bg-[#F5F0EB]">
+                  <tr key={`${p.symbol}-${p.callStrike}-${p.putStrike}-${idx}`} className="border-b border-[var(--border)] bg-[#181C27] hover:bg-[#1E222D] transition-colors">
                     {showSymbolColumn && <td className="p-2 text-sm mono font-bold text-[var(--brand)]">{p.symbol}</td>}
                     <td className="p-2">
-                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${p.type === "straddle" ? "bg-blue-100 text-blue-700" : "bg-amber-100 text-amber-700"}`}>
+                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${p.type === "straddle" ? "bg-blue-500/20 text-blue-400 border border-blue-500/30" : "bg-amber-500/20 text-amber-400 border border-amber-500/30"}`}>
                         {(p.type || "straddle").toUpperCase()}
                       </span>
                     </td>
-                    <td className="p-2 text-sm mono dim">{fmtNum(p.spot)}</td>
-                    <td className="p-2 text-sm mono">
+                    <td className="p-2 text-sm mono text-[#BAC0D0]">{fmtNum(p.spot)}</td>
+                    <td className="p-2 text-sm mono font-semibold text-white">
                       {fmtNum(p.callStrike, 0)}
                     </td>
-                    <td className="p-2 text-sm mono buy">{fmtNum(p.callLtp)}</td>
-                    <td className="p-2 text-sm mono">
+                    <td className="p-2 text-sm mono buy font-bold">{fmtNum(p.callLtp)}</td>
+                    <td className="p-2 text-sm mono font-semibold text-white">
                       {fmtNum(p.putStrike, 0)}
                     </td>
-                    <td className="p-2 text-sm mono sell">{fmtNum(p.putLtp)}</td>
-                    <td className="p-2 text-sm mono" style={{ color: p.diff < 2 ? "#0096FF" : p.diff < 10 ? "#22c55e" : "inherit" }}>
+                    <td className="p-2 text-sm mono sell font-bold">{fmtNum(p.putLtp)}</td>
+                    <td className="p-2 text-sm mono font-bold" style={{ color: p.diff < 2 ? "#38BDF8" : p.diff < 10 ? "#089981" : "#F59E0B" }}>
                       {fmtNum(p.diff)}
                     </td>
                     <td className="p-2 text-right">
                       <button 
                         onClick={() => handleBuy(p)}
                         disabled={isOrdering}
-                        className="px-3 py-1 bg-[#D6C5B3] text-[#4A3F35] text-xs font-medium rounded border border-[#C2B09C] hover:bg-[#C2B09C] transition disabled:opacity-50"
+                        className="px-3 py-1 bg-[var(--brand)] text-white text-xs font-semibold rounded border border-[var(--brand)] hover:bg-[#1E53E5] transition disabled:opacity-50"
                       >
                         Buy Pair
                       </button>
@@ -207,15 +207,15 @@ export default function PremiumMatcher({ preset, showSymbolColumn }) {
                 {trackedPairs.map((t) => {
                   const pnl = getTrackedLivePnl(t);
                   return (
-                    <tr key={t.id} className="border-b border-gray-300 hover:bg-gray-100">
-                      <td className="p-2 text-sm dim">{t.timestamp}</td>
-                      <td className="p-2 text-sm mono">
+                    <tr key={t.id} className="border-b border-[var(--border)] bg-[#181C27] hover:bg-[#1E222D] transition-colors">
+                      <td className="p-2 text-sm text-[#BAC0D0] mono">{t.timestamp}</td>
+                      <td className="p-2 text-sm mono font-semibold text-white">
                         {t.symbol} {fmtNum(t.callStrike, 0)}CE + {fmtNum(t.putStrike, 0)}PE
                       </td>
-                      <td className={`p-2 text-sm mono ${pnl.callPnl >= 0 ? "buy" : "sell"}`}>
+                      <td className={`p-2 text-sm mono font-bold ${pnl.callPnl >= 0 ? "buy" : "sell"}`}>
                         {pnl.callPnl >= 0 ? "+" : ""}{fmtNum(pnl.callPnl)}
                       </td>
-                      <td className={`p-2 text-sm mono ${pnl.putPnl >= 0 ? "buy" : "sell"}`}>
+                      <td className={`p-2 text-sm mono font-bold ${pnl.putPnl >= 0 ? "buy" : "sell"}`}>
                         {pnl.putPnl >= 0 ? "+" : ""}{fmtNum(pnl.putPnl)}
                       </td>
                       <td className={`p-2 text-sm mono text-right font-bold ${pnl.totalPnl >= 0 ? "buy" : "sell"}`}>

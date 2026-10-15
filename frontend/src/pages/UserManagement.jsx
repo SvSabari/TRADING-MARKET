@@ -2,7 +2,22 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import Panel from "@/components/Panel";
-import { Plus, Trash, PencilSimple, CheckCircle, XCircle, Plugs } from "@phosphor-icons/react";
+import { Plus, Trash, PencilSimple, CheckCircle, XCircle, Plugs, Eye, FloppyDisk, X, User } from "@phosphor-icons/react";
+
+function formatCurrency(val, compact = false) {
+  const num = Number(val) || 0;
+  if (!compact) {
+    return "₹" + num.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  // For compact display if number is huge:
+  if (Math.abs(num) >= 10000000) {
+    return "₹" + (num / 10000000).toFixed(2) + " Cr";
+  }
+  if (Math.abs(num) >= 100000) {
+    return "₹" + (num / 100000).toFixed(2) + " L";
+  }
+  return "₹" + num.toLocaleString("en-IN", { maximumFractionDigits: 0 });
+}
 
 function UserProfileDetails({ userId }) {
   const [data, setData] = useState(null);
@@ -31,14 +46,18 @@ function UserProfileDetails({ userId }) {
   if (!data) return <span className="text-[10px] dim mono">Loading...</span>;
   if (data.error) return <span className="text-[10px] text-[var(--sell)] mono font-bold">No Broker</span>;
 
+  const rawCash = Number(data.cash) || 0;
+  const fullText = "₹" + rawCash.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const displayCash = rawCash >= 1000000 ? formatCurrency(rawCash, true) : "₹" + rawCash.toLocaleString('en-IN', { maximumFractionDigits: 0 });
+
   return (
     <div className="flex flex-col text-right">
-      {data.name && <span className="text-xs font-bold text-[var(--text-primary)] whitespace-nowrap">{toTitleCase(data.name)}</span>}
+      {data.name && <span className="text-xs font-bold text-white truncate max-w-[130px]" title={data.name}>{toTitleCase(data.name)}</span>}
       <div className="flex flex-col items-end mt-0.5">
-        <span className="text-[11px] font-bold font-outfit text-green-500 whitespace-nowrap">
-          ₹{Number(data.cash).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+        <span className="text-[12px] font-bold font-outfit text-[#22C55E] whitespace-nowrap cursor-help" title={`Exact Live Balance: ${fullText}`}>
+          {displayCash}
         </span>
-        <span className="text-[8px] mono dim uppercase whitespace-nowrap">Cash Available</span>
+        <span className="text-[9px] mono uppercase whitespace-nowrap font-semibold text-[#CBD5E1]">Cash Available</span>
       </div>
     </div>
   );
@@ -114,6 +133,7 @@ const EMPTY_FORM = {
   bank_account: "",
   place_order: true,
   profit_pct: "",
+  capital_allocation_pct: 100,
   account_status: "active",
   brokers: [{ ...EMPTY_BROKER_ROW }],
 };
@@ -157,11 +177,17 @@ export default function UserManagement() {
   const [deleteConfirmId, setDeleteConfirmId] = useState(null);
   const [busy, setBusy] = useState(false);
 
+  const [capitalMetrics, setCapitalMetrics] = useState({});
+  const [allocationInputs, setAllocationInputs] = useState({});
+  const [savingAllocationId, setSavingAllocationId] = useState(null);
+  const [selectedUserForSheet, setSelectedUserForSheet] = useState(null);
+
   const loadData = async () => {
     try {
-      const [uRes, sRes] = await Promise.allSettled([
+      const [uRes, sRes, cRes] = await Promise.allSettled([
         api.get("/managed-users"),
         api.get("/managed-users/schemas"),
+        api.get("/managed-users/capital-metrics"),
       ]);
 
       if (uRes.status === "fulfilled") {
@@ -169,6 +195,9 @@ export default function UserManagement() {
       }
       if (sRes.status === "fulfilled" && sRes.value.data?.schemas) {
         setSchemas(sRes.value.data.schemas);
+      }
+      if (cRes.status === "fulfilled" && cRes.value.data?.metrics) {
+        setCapitalMetrics(cRes.value.data.metrics);
       }
     } catch (e) {
       toast.error("Failed to load user management data");
@@ -248,6 +277,7 @@ export default function UserManagement() {
         bank_account: form.bank_account,
         place_order: form.place_order,
         profit_pct: parseFloat(form.profit_pct) || 0,
+        capital_allocation_pct: parseFloat(form.capital_allocation_pct) || 100,
         account_status: form.account_status,
         brokers: formattedBrokers,
       };
@@ -312,6 +342,7 @@ export default function UserManagement() {
       bank_account: u.bank_account || "",
       place_order: u.place_order,
       profit_pct: u.profit_pct,
+      capital_allocation_pct: u.capital_allocation_pct !== undefined ? u.capital_allocation_pct : 100,
       account_status: u.account_status,
       brokers: loadedBrokers.length > 0 ? loadedBrokers : [{ ...EMPTY_BROKER_ROW }],
     });
@@ -323,6 +354,56 @@ export default function UserManagement() {
   const cancelEdit = () => {
     setForm(EMPTY_FORM);
     setEditId(null);
+  };
+
+  const handleAllocationInputChange = (userId, value) => {
+    setAllocationInputs((prev) => ({ ...prev, [userId]: value }));
+  };
+
+  const saveAllocationPct = async (userId) => {
+    const rawVal = allocationInputs[userId];
+    const val = parseFloat(rawVal);
+    if (isNaN(val) || val < 0 || val > 100) {
+      toast.error("Allocation percentage must be between 0 and 100%");
+      return;
+    }
+    setSavingAllocationId(userId);
+    try {
+      await api.patch(`/managed-users/${userId}`, { capital_allocation_pct: val });
+      toast.success(`Saved capital allocation to ${val}%`);
+      setAllocationInputs((prev) => {
+        const next = { ...prev };
+        delete next[userId];
+        return next;
+      });
+      loadData();
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Failed to save capital allocation");
+    } finally {
+      setSavingAllocationId(null);
+    }
+  };
+
+  const togglePlaceOrder = async (u) => {
+    const nextVal = !u.place_order;
+    try {
+      await api.patch(`/managed-users/${u.id}`, { place_order: nextVal });
+      toast.success(`Order permission set to ${nextVal ? "YES" : "NO"} for ${u.name}`);
+      loadData();
+    } catch (e) {
+      toast.error("Failed to update order permission");
+    }
+  };
+
+  const toggleAccountStatus = async (u) => {
+    const nextVal = u.account_status === "active" ? "deactivated" : "active";
+    try {
+      await api.patch(`/managed-users/${u.id}`, { account_status: nextVal });
+      toast.success(`Account status set to ${nextVal.toUpperCase()} for ${u.name}`);
+      loadData();
+    } catch (e) {
+      toast.error("Failed to update account status");
+    }
   };
 
   const generateBrokerToken = async (userId, brokerKey) => {
@@ -341,15 +422,15 @@ export default function UserManagement() {
   };
 
   const inputCls = "terminal w-full";
-  const labelCls = "block dim text-[10px] mono uppercase tracking-widest mb-1 font-semibold";
+  const labelCls = "block text-[#E2E8F0] text-[11px] mono uppercase tracking-wider mb-1 font-bold";
 
   return (
     <div className="space-y-6" data-testid="user-management-page">
       <div>
-        <h1 style={{ fontFamily: "Outfit", fontWeight: 700, fontSize: 28, letterSpacing: "-0.01em" }}>
+        <h1 style={{ fontFamily: "Outfit", fontWeight: 700, fontSize: 28, letterSpacing: "-0.01em", color: "#FFFFFF" }}>
           User Management
         </h1>
-        <p className="dim text-sm mt-1">
+        <p className="text-[#CBD5E1] text-sm mt-1">
           Add and manage users linked to your trading account. Customize exact broker credentials per broker (Alice Blue, Zerodha, ICICI, Angel One, Upstox, Fyers).
         </p>
       </div>
@@ -359,7 +440,7 @@ export default function UserManagement() {
         <form autoComplete="off" onSubmit={(e) => { e.preventDefault(); save(); }} className="p-4 space-y-6">
           {/* Section 1: User Profile Info */}
           <div>
-            <div className="dim text-xs mono uppercase tracking-widest mb-3 font-bold text-[var(--brand)]">
+            <div className="text-xs mono uppercase tracking-widest mb-3 font-bold text-[#60A5FA]">
               1. User Profile Details
             </div>
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -410,6 +491,22 @@ export default function UserManagement() {
               </div>
 
               <div>
+                <label className={labelCls}>Capital Allocation (%) *</label>
+                <input
+                  className={inputCls}
+                  name="user_capital_allocation"
+                  autoComplete="off"
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="1"
+                  placeholder="e.g. 20"
+                  value={form.capital_allocation_pct !== undefined ? form.capital_allocation_pct : 100}
+                  onChange={(e) => setField("capital_allocation_pct", e.target.value)}
+                />
+              </div>
+
+              <div>
                 <label className={labelCls}>Account Status *</label>
                 <select className="terminal w-full" value={form.account_status} onChange={(e) => setField("account_status", e.target.value)}>
                   <option value="active">Active</option>
@@ -424,7 +521,7 @@ export default function UserManagement() {
           {/* Section 2: Dynamic Per-Broker Configurations */}
           <div>
             <div className="flex items-center justify-between mb-3">
-              <div className="dim text-xs mono uppercase tracking-widest font-bold text-[var(--brand)] flex items-center gap-2">
+              <div className="text-xs mono uppercase tracking-widest font-bold text-[#60A5FA] flex items-center gap-2">
                 <Plugs size={14} weight="bold" /> 2. Configured Brokers ({form.brokers.length} Broker{form.brokers.length > 1 ? "s" : ""})
               </div>
               <button type="button" className="btn text-xs flex items-center gap-1 py-1 px-3" onClick={addBrokerRow}>
@@ -432,7 +529,7 @@ export default function UserManagement() {
               </button>
             </div>
             {editId && (
-              <div className="text-[10px] mono dim mb-3 px-3 py-2 rounded" style={{ background: "rgba(42,157,143,0.08)", border: "1px solid rgba(42,157,143,0.2)", color: "var(--buy)" }}>
+              <div className="text-[10px] mono mb-3 px-3 py-2 rounded" style={{ background: "rgba(42,157,143,0.15)", border: "1px solid rgba(42,157,143,0.4)", color: "#2DD4BF" }}>
                 ✎ <strong>Editing mode:</strong> Credential fields you leave blank will keep their existing values. Only fill in fields you want to change.
               </div>
             )}
@@ -444,10 +541,10 @@ export default function UserManagement() {
                   <div key={idx} className="p-4 rounded border border-[var(--border)] relative space-y-4" style={{ background: "var(--bg)" }}>
                     <div className="flex items-center justify-between pb-2 border-b border-[var(--border)]">
                       <div className="flex items-center gap-3">
-                        <span className="mono text-xs font-bold uppercase tracking-wider">
+                        <span className="mono text-xs font-bold uppercase tracking-wider text-white">
                           Broker #{idx + 1}
                         </span>
-                        <select className="terminal py-1 px-3 text-xs font-bold" value={bRow.broker} onChange={(e) => changeBrokerType(idx, e.target.value)}>
+                        <select className="terminal py-1 px-3 text-xs font-bold text-white" value={bRow.broker} onChange={(e) => changeBrokerType(idx, e.target.value)}>
                           {Object.keys(BROKER_MAP).map((bName) => (
                             <option key={bName} value={bName}>{bName}</option>
                           ))}
@@ -476,7 +573,7 @@ export default function UserManagement() {
                             value={bRow.credentials?.[field.name] || ""}
                             onChange={(e) => setCredentialField(idx, field.name, e.target.value)}
                           />
-                          {field.help && <div className="dim text-[10px] mt-1">{field.help}</div>}
+                          {field.help && <div className="text-[#CBD5E1] text-[11px] mt-1 font-sans">{field.help}</div>}
                         </div>
                       ))}
                     </div>
@@ -502,21 +599,21 @@ export default function UserManagement() {
         </form>
       </Panel>
 
-      {/* Users Table */}
+      {/* Users Table: Clean, fits screen without horizontal scroll, with Centered Modal */}
       <Panel title="All User Accounts" kicker={`${users.length} registered accounts`}>
-        <div style={{ overflowX: "auto" }}>
-          <table className="w-full text-xs">
+        <div className="w-full">
+          <table className="w-full text-xs border-collapse">
             <thead>
-              <tr className="dim text-[10px] uppercase tracking-widest border-b border-[#222]">
-                <th className="text-left py-2 px-4 whitespace-nowrap">Name</th>
-                <th className="text-left py-2 px-4 whitespace-nowrap">Phone</th>
-                <th className="text-right p-4 font-semibold text-[var(--text-secondary)]">Profile & Wallet</th>
-                <th className="text-left py-2 px-4">Configured Brokers</th>
-                <th className="text-center py-2 px-4 whitespace-nowrap">Place Order</th>
-                <th className="text-right py-2 px-4 whitespace-nowrap">Profit %</th>
-                <th className="text-center py-2 px-4 whitespace-nowrap">Status</th>
-                <th className="text-center py-2 px-4 whitespace-nowrap">Session Actions</th>
-                <th className="text-center py-2 px-4 whitespace-nowrap">Actions</th>
+              <tr className="dim text-[10px] uppercase tracking-wider border-b border-[#222]">
+                <th className="text-left whitespace-nowrap" style={{ padding: "8px 8px" }}>User</th>
+                <th className="text-center whitespace-nowrap" style={{ padding: "8px 6px" }}>Enrolled</th>
+                <th className="text-right whitespace-nowrap" style={{ padding: "8px 8px" }}>Available Cash</th>
+                <th className="text-center whitespace-nowrap" style={{ padding: "8px 6px" }}>Allocation</th>
+                <th className="text-right whitespace-nowrap" style={{ padding: "8px 8px" }}>Used (₹)</th>
+                <th className="text-center whitespace-nowrap" style={{ padding: "8px 4px" }}>Order</th>
+                <th className="text-center whitespace-nowrap" style={{ padding: "8px 4px" }}>Status</th>
+                <th className="text-center whitespace-nowrap" style={{ padding: "8px 6px" }}>Session</th>
+                <th className="text-center whitespace-nowrap" style={{ padding: "8px 8px" }}>Actions</th>
               </tr>
             </thead>
             <tbody className="cell-divider">
@@ -529,55 +626,168 @@ export default function UserManagement() {
               )}
               {users.map((u) => {
                 const bList = u.brokers || [];
+                const currentInputVal = allocationInputs[u.id] !== undefined 
+                  ? allocationInputs[u.id] 
+                  : (u.capital_allocation_pct !== undefined ? u.capital_allocation_pct : 100);
+                const hasUnsavedChange = allocationInputs[u.id] !== undefined && parseFloat(allocationInputs[u.id]) !== u.capital_allocation_pct;
+                const isSaving = savingAllocationId === u.id;
+                const cap = capitalMetrics[u.id] || {};
+
                 return (
                   <tr key={u.id} className="hover:bg-[rgba(255,255,255,0.02)] transition-colors">
-                    <td className="py-3 px-4 font-bold whitespace-nowrap">{u.name}</td>
-                    <td className="py-3 px-4 mono whitespace-nowrap">{u.phone}</td>
-                    <td className="p-4 text-right">
+                    {/* User & Phone */}
+                    <td className="whitespace-nowrap" style={{ padding: "8px 8px" }}>
+                      <div className="font-bold text-[13px] text-white leading-snug">{u.name}</div>
+                      <div className="mono text-[11px] text-[#CBD5E1]">{u.phone}</div>
+                    </td>
+
+                    {/* Enrollment Date */}
+                    <td className="text-center mono text-[12px] text-[#E2E8F0] font-semibold whitespace-nowrap" style={{ padding: "8px 6px" }}>
+                      {u.enrollment_date || (u.created_at ? new Date(u.created_at).toISOString().split("T")[0] : "-")}
+                    </td>
+
+                    {/* Profile & Wallet */}
+                    <td className="text-right whitespace-nowrap" style={{ padding: "8px 8px" }}>
                       <UserProfileDetails userId={u.id} />
                     </td>
-                    <td className="py-3 px-4">
-                      <div className="flex flex-wrap gap-1">
-                        {bList.map((b, i) => (
-                          <span key={i} className="px-2 py-0.5 rounded text-[10px] mono uppercase font-bold border border-[var(--border)]" style={{ background: "var(--bg)" }}>
-                            {b.broker}
-                          </span>
-                        ))}
+
+                    {/* Capital Allocation (%) with compact, clean input & Save button */}
+                    <td className="text-center whitespace-nowrap" style={{ padding: "8px 6px" }}>
+                      <div className="inline-flex items-center gap-1 justify-center">
+                        <div className="flex items-center">
+                          <input
+                            type="number"
+                            min="0"
+                            max="100"
+                            step="1"
+                            className="mono font-bold text-xs text-center border border-[var(--border)] rounded bg-[var(--surface)] text-[var(--text-primary)] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none focus:outline-none focus:border-[var(--brand)]"
+                            style={{ width: "46px", padding: "2px 4px", margin: 0 }}
+                            value={currentInputVal}
+                            onChange={(e) => handleAllocationInputChange(u.id, e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                saveAllocationPct(u.id);
+                              }
+                            }}
+                          />
+                          <span className="mono font-bold text-[11px] text-[#E2E8F0] ml-0.5">%</span>
+                        </div>
+                        {hasUnsavedChange && (
+                          <button
+                            type="button"
+                            className="btn btn-primary py-0.5 px-1.5 text-[9px] flex items-center gap-0.5 mono font-bold shadow-sm"
+                            style={{ minWidth: "auto" }}
+                            onClick={() => saveAllocationPct(u.id)}
+                            disabled={isSaving}
+                            title="Click to save updated allocation percentage"
+                          >
+                            <FloppyDisk size={10} weight="bold" />
+                            {isSaving ? "..." : "Save"}
+                          </button>
+                        )}
                       </div>
                     </td>
-                    <td className="py-3 px-4 text-center">
-                      {u.place_order ? (
-                        <span className="buy text-[10px] mono font-bold">YES</span>
-                      ) : (
-                        <span className="sell text-[10px] mono font-bold">NO</span>
-                      )}
+
+                    {/* Amount Used (₹) */}
+                    <td className="text-right whitespace-nowrap" style={{ padding: "8px 8px" }}>
+                      {(() => {
+                        const usedVal = Number(cap.amount_used || 0);
+                        const fullUsed = "₹" + usedVal.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                        const displayUsed = usedVal >= 1000000 ? formatCurrency(usedVal, true) : fullUsed;
+                        return (
+                          <div title={`Committed: ${fullUsed}`}>
+                            <div className="mono font-bold text-xs" style={{ color: usedVal > 0 ? "var(--sell)" : "#FFFFFF" }}>
+                              {displayUsed}
+                            </div>
+                            <div className="text-[10px] mono font-semibold text-[#CBD5E1]">Committed</div>
+                          </div>
+                        );
+                      })()}
                     </td>
-                    <td className="py-3 px-4 text-right mono font-bold">{u.profit_pct}%</td>
-                    <td className="py-3 px-4 text-center">
-                      <span className="text-[10px] mono font-bold px-2 py-0.5 rounded" style={{
-                        background: u.account_status === "active" ? "rgba(0,230,118,0.12)" : "rgba(239,68,68,0.12)",
-                        color: u.account_status === "active" ? "var(--buy)" : "var(--sell)",
-                      }}>
+
+                    {/* Order Permission: Clickable toggle for trader */}
+                    <td className="text-center whitespace-nowrap" style={{ padding: "8px 4px" }}>
+                      <button
+                        type="button"
+                        onClick={() => togglePlaceOrder(u)}
+                        title="Click to toggle order permission"
+                        className={`text-[10px] mono font-bold px-1.5 py-0.5 rounded cursor-pointer border transition-all ${
+                          u.place_order
+                            ? "buy border-green-500/30 hover:bg-green-500/20"
+                            : "sell border-red-500/30 hover:bg-red-500/20"
+                        }`}
+                        style={{ background: u.place_order ? "rgba(0,230,118,0.1)" : "rgba(239,68,68,0.1)" }}
+                      >
+                        {u.place_order ? "YES" : "NO"}
+                      </button>
+                    </td>
+
+                    {/* Account Status: Clickable toggle for trader */}
+                    <td className="text-center whitespace-nowrap" style={{ padding: "8px 4px" }}>
+                      <button
+                        type="button"
+                        onClick={() => toggleAccountStatus(u)}
+                        title="Click to toggle account status (Active / Deactivated)"
+                        className="text-[10px] mono font-bold px-1.5 py-0.5 rounded cursor-pointer border transition-all"
+                        style={{
+                          background: u.account_status === "active" ? "rgba(0,230,118,0.12)" : "rgba(239,68,68,0.12)",
+                          color: u.account_status === "active" ? "var(--buy)" : "var(--sell)",
+                          borderColor: u.account_status === "active" ? "rgba(0,230,118,0.3)" : "rgba(239,68,68,0.3)",
+                        }}
+                      >
                         {u.account_status.toUpperCase()}
-                      </span>
+                      </button>
                     </td>
-                    <td className="py-3 px-4">
+
+                    {/* Session Status: Compact display whether the user has generated/updated session today */}
+                    <td className="text-center whitespace-nowrap" style={{ padding: "8px 6px" }}>
                       <div className="flex flex-col gap-1 items-center">
+                        {bList.length === 0 && <span className="text-[10px] dim mono">—</span>}
                         {bList.map((b, i) => (
-                          <div key={i} className="text-[9px] py-0.5 px-2 flex items-center gap-1 mono uppercase rounded border border-[var(--border)]" style={{ background: "var(--bg)" }}>
-                            {b.session_generated ? <CheckCircle size={10} weight="fill" className="buy" /> : <XCircle size={10} weight="fill" className="sell" />}
-                            {b.broker}: {b.session_generated ? "Token Active" : "Token Pending"}
+                          <div key={i} className="flex items-center gap-1 px-1 py-0.5 rounded border border-[var(--border)]" style={{ background: "var(--bg)" }}>
+                            <span className="text-[9px] mono uppercase font-bold dim">{b.broker.replace("_", " ")}:</span>
+                            {b.session_generated ? (
+                              <span className="flex items-center gap-0.5 text-[9px] mono font-bold text-green-500">
+                                <CheckCircle size={10} weight="fill" className="buy" /> Updated
+                              </span>
+                            ) : (
+                              <span className="flex items-center gap-0.5 text-[9px] mono font-bold text-red-400">
+                                <XCircle size={10} weight="fill" className="sell" /> Not Updated
+                              </span>
+                            )}
                           </div>
                         ))}
                       </div>
                     </td>
-                    <td className="py-3 px-4">
-                      <div className="flex items-center justify-center gap-2">
-                        <button className="btn text-[10px] flex items-center gap-1 py-1 px-2" onClick={() => startEdit(u)} title="Edit">
-                          <PencilSimple size={10} weight="bold" /> Edit
+
+                    {/* Actions: View Sheet, Edit, Del - Fully visible with generous breathing room */}
+                    <td className="text-center whitespace-nowrap" style={{ padding: "8px 8px" }}>
+                      <div className="flex items-center justify-center gap-1.5">
+                        <button
+                          type="button"
+                          className="btn text-[10px] py-1 px-2 flex items-center gap-1 mono font-bold rounded"
+                          style={{ background: "rgba(33, 150, 243, 0.12)", color: "#1E88E5", borderColor: "rgba(33, 150, 243, 0.3)" }}
+                          onClick={() => setSelectedUserForSheet(u)}
+                          title="View complete details in sheet"
+                        >
+                          <Eye size={12} weight="bold" /> View
                         </button>
-                        <button className="btn text-[10px] flex items-center gap-1 py-1 px-2" style={{ color: "var(--sell)" }} onClick={() => setDeleteConfirmId(u.id)} title="Delete">
-                          <Trash size={10} weight="bold" /> Del
+                        <button
+                          type="button"
+                          className="btn text-[10px] py-1 px-1.5 rounded text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                          onClick={() => startEdit(u)}
+                          title="Edit Account"
+                        >
+                          <PencilSimple size={13} weight="bold" />
+                        </button>
+                        <button
+                          type="button"
+                          className="btn text-[10px] py-1 px-1.5 rounded hover:bg-red-500/10"
+                          style={{ color: "var(--sell)", borderColor: "rgba(239,68,68,0.25)" }}
+                          onClick={() => setDeleteConfirmId(u.id)}
+                          title="Delete Account"
+                        >
+                          <Trash size={13} weight="bold" />
                         </button>
                       </div>
                     </td>
@@ -588,6 +798,160 @@ export default function UserManagement() {
           </table>
         </div>
       </Panel>
+
+      {/* Centered User Detail Sheet Modal: Perfectly centered, full view without clipping or scrolling */}
+      {selectedUserForSheet && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm transition-opacity" onClick={() => setSelectedUserForSheet(null)}>
+          <div
+            className="w-full max-w-2xl rounded-xl p-5 space-y-4 shadow-2xl transition-all"
+            style={{ background: "var(--surface)", border: "1px solid var(--border)", boxShadow: "0 20px 40px rgba(0,0,0,0.5)" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-[var(--border)]">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg" style={{ background: "rgba(33, 150, 243, 0.15)", color: "#64B5F6" }}>
+                  <User size={20} weight="bold" />
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-[var(--text-primary)]">{selectedUserForSheet.name}</h2>
+                  <div className="mono text-xs dim">{selectedUserForSheet.phone}</div>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="btn p-1.5 rounded-lg hover:bg-[rgba(255,255,255,0.08)]"
+                onClick={() => setSelectedUserForSheet(null)}
+              >
+                <X size={18} weight="bold" />
+              </button>
+            </div>
+
+            {/* Section 1: Capital Allocation & Balances (3 distinct cards, no duplicate percentage) */}
+            <div>
+              <div className="dim text-[10px] mono uppercase tracking-widest font-bold text-[var(--brand)] mb-2">
+                Capital Allocation & Usage ({selectedUserForSheet.capital_allocation_pct !== undefined ? selectedUserForSheet.capital_allocation_pct : 100}% Allowed)
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <div className="p-3 rounded-lg border border-[var(--border)]" style={{ background: "var(--bg)" }}>
+                  <div className="text-[#BAC0D0] text-[10px] font-semibold mono uppercase tracking-wider">Total Allocated (₹)</div>
+                  <div className="text-base font-bold mono mt-1 text-white">
+                    ₹{Number(capitalMetrics[selectedUserForSheet.id]?.allocated_amount || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+                  </div>
+                  <div className="text-[10px] text-[#9BA1B2] mono mt-1">Permitted trading capital</div>
+                </div>
+
+                <div className="p-3 rounded-lg border border-[var(--border)]" style={{ background: "var(--bg)" }}>
+                  <div className="text-[#BAC0D0] text-[10px] font-semibold mono uppercase tracking-wider">Amount Used (₹)</div>
+                  <div className="text-base font-bold mono mt-1" style={{ color: (capitalMetrics[selectedUserForSheet.id]?.amount_used || 0) > 0 ? "var(--sell)" : "#FFFFFF" }}>
+                    ₹{Number(capitalMetrics[selectedUserForSheet.id]?.amount_used || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+                  </div>
+                  <div className="text-[10px] text-[#9BA1B2] mono mt-1">Committed in positions/orders</div>
+                </div>
+
+                <div className="p-3 rounded-lg border border-[var(--border)]" style={{ background: "var(--bg)" }}>
+                  <div className="text-[#BAC0D0] text-[10px] font-semibold mono uppercase tracking-wider">Available Remaining (₹)</div>
+                  <div className="text-base font-bold mono mt-1 text-[#089981]">
+                    ₹{Number(capitalMetrics[selectedUserForSheet.id]?.available_amount !== undefined ? capitalMetrics[selectedUserForSheet.id]?.available_amount : 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+                  </div>
+                  <div className="text-[10px] text-[#9BA1B2] mono mt-1">Free for new trades</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Section 2: Account Details & Permissions */}
+            <div>
+              <div className="text-xs mono uppercase tracking-widest font-bold text-[#60A5FA] mb-2">
+                Account Details & Permissions
+              </div>
+              <div className="grid grid-cols-3 gap-3 p-3.5 rounded-lg border border-[var(--border)] text-xs" style={{ background: "var(--bg)" }}>
+                <div>
+                  <span className="text-[#BAC0D0] text-[10px] mono font-semibold block mb-0.5">Enrollment Date:</span>
+                  <span className="mono font-bold text-white text-[13px]">
+                    {selectedUserForSheet.enrollment_date || (selectedUserForSheet.created_at ? new Date(selectedUserForSheet.created_at).toISOString().split("T")[0] : "-")}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[#BAC0D0] text-[10px] mono font-semibold block mb-0.5">Account Status:</span>
+                  <span className="mono font-bold uppercase text-[12px]" style={{ color: selectedUserForSheet.account_status === "active" ? "var(--buy)" : "var(--sell)" }}>
+                    {selectedUserForSheet.account_status}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[#BAC0D0] text-[10px] mono font-semibold block mb-0.5">Place Order:</span>
+                  <span className="mono font-bold uppercase text-[12px]" style={{ color: selectedUserForSheet.place_order ? "var(--buy)" : "var(--sell)" }}>
+                    {selectedUserForSheet.place_order ? "Yes" : "No"}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[#BAC0D0] text-[10px] mono font-semibold block mb-0.5">Profit %:</span>
+                  <span className="mono font-bold text-white text-[13px]">{selectedUserForSheet.profit_pct}%</span>
+                </div>
+                <div className="col-span-2">
+                  <span className="text-[#BAC0D0] text-[10px] mono font-semibold block mb-0.5">Bank Account:</span>
+                  <span className="mono font-bold text-white text-[13px]">{selectedUserForSheet.bank_account || "Not provided"}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Section 3: Configured Brokers */}
+            <div>
+              <div className="text-xs mono uppercase tracking-widest font-bold text-[#60A5FA] mb-2">
+                Configured Brokers ({(selectedUserForSheet.brokers || []).length})
+              </div>
+              <div className="space-y-2">
+                {(selectedUserForSheet.brokers || []).map((b, idx) => (
+                  <div key={idx} className="p-3 rounded-lg border border-[var(--border)] flex items-center justify-between" style={{ background: "var(--bg)" }}>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-sm mono uppercase text-white">{b.broker}</span>
+                        <div className="flex items-center gap-1">
+                          {b.session_generated ? <CheckCircle size={14} weight="fill" className="buy" /> : <XCircle size={14} weight="fill" className="sell" />}
+                          <span className="text-[11px] mono font-bold text-[#BAC0D0]">
+                            {b.session_generated ? "Token Active" : "Token Pending"}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="text-xs mono mt-1 text-[#BAC0D0]">
+                        Client Code: <strong className="text-white text-[13px]">{b.account_number || b.credentials?.user_id || "N/A"}</strong>
+                      </div>
+                    </div>
+                    <div className="text-[11px] mono font-bold px-2.5 py-1 rounded border" style={{
+                      background: b.session_generated ? "rgba(0,230,118,0.12)" : "rgba(239,68,68,0.12)",
+                      color: b.session_generated ? "var(--buy)" : "var(--sell)",
+                      borderColor: b.session_generated ? "rgba(0,230,118,0.3)" : "rgba(239,68,68,0.3)"
+                    }}>
+                      {b.session_generated ? "Session Active" : "Session Expired"}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Modal Footer Actions */}
+            <div className="pt-3 border-t border-[var(--border)] flex items-center justify-end gap-2">
+              <button
+                type="button"
+                className="btn py-1.5 px-3 text-xs"
+                onClick={() => setSelectedUserForSheet(null)}
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary py-1.5 px-3.5 text-xs font-bold"
+                onClick={() => {
+                  const target = selectedUserForSheet;
+                  setSelectedUserForSheet(null);
+                  startEdit(target);
+                }}
+              >
+                <PencilSimple size={12} weight="bold" className="mr-1 inline" /> Edit Account
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Delete Confirmation Modal */}
       {deleteConfirmId && (

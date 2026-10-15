@@ -1,4 +1,4 @@
-﻿/* eslint-disable */
+/* eslint-disable */
 export default function BrokerForm({ schema, values, onChange, mockMode, onMockChange, accountType, onSave, extras }) {
   return (
     <div className="p-4 space-y-4">
@@ -37,19 +37,19 @@ export default function BrokerForm({ schema, values, onChange, mockMode, onMockC
           ))}
         </div>
       )}
-      <div className="space-y-2 p-3 bg-[#FCFAF8] border border-[#E8E0D5] rounded-md">
+      <div className="space-y-2 p-3 bg-[#181C28] border border-[var(--border)] rounded-md">
         {accountType === "primary" ? (
           <div className="text-sm">
-            <span className="font-semibold text-[var(--brand)]">Primary Account</span>
-            <p className="dim text-xs mt-1">This account will strictly be used to pull live market data and populate charts. Order execution is completely disabled for safety.</p>
+            <span className="font-bold text-[#60A5FA]">Primary Account</span>
+            <p className="text-[#CBD5E1] text-xs mt-1">This account will strictly be used to pull live market data and populate charts. Order execution is completely disabled for safety.</p>
           </div>
         ) : (
           <div className="text-sm">
-            <span className="font-semibold text-[var(--brand)]">Secondary Account</span>
-            <p className="dim text-xs mt-1 mb-3">This account will strictly be used to execute your trades. Live data fetching is offloaded to the Primary account.</p>
-            <label className="flex items-center gap-2 text-xs mono p-2 border-l-2 border-[var(--brand)] bg-white rounded">
+            <span className="font-bold text-[#60A5FA]">Secondary Account</span>
+            <p className="text-[#CBD5E1] text-xs mt-1 mb-3">This account will strictly be used to execute your trades. Live data fetching is offloaded to the Primary account.</p>
+            <label className="flex items-center gap-2 text-xs mono p-2 border-l-2 border-[var(--brand)] bg-[#141722] text-[#CBD5E1] rounded">
               <input type="checkbox" checked={mockMode} onChange={(e) => onMockChange(e.target.checked)} />
-              <span className="uppercase tracking-widest">Mock mode (Orders go to internal paper broker)</span>
+              <span className="uppercase tracking-widest font-semibold">Mock mode (Orders go to internal paper broker)</span>
             </label>
           </div>
         )}
