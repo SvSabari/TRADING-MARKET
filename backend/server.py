@@ -1,4 +1,4 @@
-"""Algo Trading Platform — FastAPI entry point."""
+"""Algo Trading Platform — FastAPI production entry point (v2.1.0)."""
 from __future__ import annotations
 
 import logging
