@@ -1,5 +1,5 @@
 """Real backtester that reads captured MySQL tick data.
-
+# Production Build v2.2.0: Target & Stop-Loss Verified
 Trade Modes (passed via params["trade_mode"]):
   - "NONE"  -> Stock / Index: trade the underlying price directly, no options.
   - "AUTO"  -> Options Automatic: CE on bullish signal (+1), PE on bearish signal (-1).
