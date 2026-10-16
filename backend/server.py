@@ -63,6 +63,14 @@ logging.getLogger("uvicorn.access").addFilter(EndpointFilter())
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Ensure all MySQL tables exist on startup
+    from db import init_db
+    try:
+        await init_db()
+        logger.info("MySQL database tables verified and initialized successfully.")
+    except Exception as e:
+        logger.error(f"Failed to initialize database tables: {e}")
+
     # Download fresh master contracts from AliceBlue on startup
     import httpx
     import os

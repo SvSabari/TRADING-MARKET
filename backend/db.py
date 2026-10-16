@@ -14,4 +14,10 @@ async def get_db():
     async with AsyncSessionLocal() as session:
         yield session
 
-# Note: The rest of the app will need heavy modifications to use `session` instead of `db.collection`
+
+async def init_db():
+    """Create all MySQL tables if they do not exist."""
+    import models  # noqa: F401
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
