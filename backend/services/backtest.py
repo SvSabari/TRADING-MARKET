@@ -844,7 +844,15 @@ async def _simulate(
         state.curve.append({"t": int(i), "ts": ts_vals[i], "equity": round(eq, 2), "price": bar_close})
 
         if state.position != 0:
-            is_eod = any(t in ts_vals[i] for t in square_off_times)
+            ts_curr = pd.to_datetime(ts_vals[i])
+            ts_next = pd.to_datetime(ts_vals[i + 1]) if i + 1 < n else ts_curr
+            t_str = ts_curr.strftime("%H:%M:%S")
+            is_eod = (
+                t_str >= "15:15:00"
+                or any(t in ts_vals[i] for t in square_off_times)
+                or (ts_curr.date() != ts_next.date())
+                or ((ts_next - ts_curr).total_seconds() > 3600)
+            )
             bar_high = float(high_vals[i])
             bar_low = float(low_vals[i])
             reason = None
@@ -880,14 +888,16 @@ async def _simulate(
                     if opt_high >= target_price: hit_target = True
                     if opt_low <= sl_price: hit_sl = True
                         
+                    # Prioritize SL over Target if both touched in same candle
                     if hit_sl:
                         reason = "SL"
                         exact_exit = opt_close
                     elif hit_target:
-                        reason = "Target"
+                        reason = "TARGET"
                         exact_exit = opt_close
                     elif is_eod:
                         reason = "EOD"
+                        exact_exit = opt_close
                 elif is_eod:
                     reason = "EOD"
             else:
@@ -895,28 +905,40 @@ async def _simulate(
                 sl_price = state.entry_price * (1 - sl_pct) if state.position == 1 else state.entry_price * (1 + sl_pct)
                 hit_target = bar_high >= target_price if state.position == 1 else bar_low <= target_price
                 hit_sl = bar_low <= sl_price if state.position == 1 else bar_high >= sl_price
+                # Prioritize SL over Target if both touched in same candle
                 if hit_sl:
                     reason = "SL"
                     exact_exit = float(close_vals[i])
                 elif hit_target:
-                    reason = "Target"
+                    reason = "TARGET"
                     exact_exit = float(close_vals[i])
                 elif is_eod:
                     reason = "EOD"
+                    exact_exit = float(close_vals[i])
 
             if reason:
-                fill = float(open_vals[i + 1])
-                if not math.isnan(fill):
-                    await _close_position(state, fill, ts_vals[i + 1], reason=reason, exact_premium=exact_exit)
+                # If session ends or crosses into next day/gap, close at this bar's close timestamp
+                if is_eod or (ts_curr.date() != ts_next.date()):
+                    exit_ts = ts_vals[i]
+                    fill = exact_exit if exact_exit is not None else float(close_vals[i])
+                else:
+                    exit_ts = ts_vals[i + 1]
+                    fill = float(open_vals[i + 1])
+                await _close_position(state, fill, exit_ts, reason=reason, exact_premium=exact_exit)
                 continue
 
         if sig == 0 or sig == state.position:
+            continue
+        # Do not enter new positions at EOD (after 15:15 or on session boundary)
+        ts_curr = pd.to_datetime(ts_vals[i])
+        ts_next = pd.to_datetime(ts_vals[i + 1]) if i + 1 < n else ts_curr
+        if ts_curr.strftime("%H:%M:%S") >= "15:15:00" or ts_curr.date() != ts_next.date():
             continue
         fill = float(open_vals[i + 1])
         if math.isnan(fill):
             continue
         if state.position != 0:
-            await _close_position(state, fill, ts_vals[i + 1], reason="Strategy")
+            await _close_position(state, fill, ts_vals[i + 1], reason="STRATEGY")
         if sig in (1, -1):
             state._signal_ts = ts_vals[i]
             await _open_position(state, symbol, sig, fill, ts_vals[i + 1], params, trade_mode)

@@ -36,7 +36,7 @@ async def run_final_audit():
 
     # 2. OPTIONS - AUTO MODE
     print("\n--- TEST 2: Options - Auto Mode (NIFTY) ---")
-    r_auto = await run_backtest('EMA Crossover', 'NIFTY', 2, {'trade_options': True, 'option_type': 'AUTO', 'target_pct': 5, 'stop_loss_pct': 3})
+    r_auto = await run_backtest('EMA Crossover', 'NIFTY', 3, {'trade_options': True, 'option_type': 'AUTO', 'target_pct': 5, 'stop_loss_pct': 3})
     exec_auto = [t for t in r_auto['trades_log'] if t['reason'] not in ('MISSING DATA', 'ENTRY DATA MISSING', 'EXIT DATA MISSING')]
     check("Options Auto trades executed", len(exec_auto) > 0, f"Count: {len(exec_auto)}")
     if exec_auto:
@@ -48,7 +48,7 @@ async def run_final_audit():
 
     # 3. OPTIONS - FORCE CE MODE
     print("\n--- TEST 3: Options - Force CE Mode (NIFTY) ---")
-    r_ce = await run_backtest('EMA Crossover', 'NIFTY', 2, {'trade_options': True, 'option_type': 'CE', 'target_pct': 5, 'stop_loss_pct': 3})
+    r_ce = await run_backtest('EMA Crossover', 'NIFTY', 3, {'trade_options': True, 'option_type': 'CE', 'target_pct': 5, 'stop_loss_pct': 3})
     exec_ce = [t for t in r_ce['trades_log'] if t['reason'] not in ('MISSING DATA', 'ENTRY DATA MISSING', 'EXIT DATA MISSING')]
     check("Force CE trades executed", len(exec_ce) > 0, f"Count: {len(exec_ce)}")
     all_ce = all(t['type'] == 'CE' and t['side'] == 'BUY' for t in exec_ce)
@@ -56,7 +56,7 @@ async def run_final_audit():
 
     # 4. OPTIONS - FORCE PE MODE
     print("\n--- TEST 4: Options - Force PE Mode (NIFTY) ---")
-    r_pe = await run_backtest('EMA Crossover', 'NIFTY', 2, {'trade_options': True, 'option_type': 'PE', 'target_pct': 5, 'stop_loss_pct': 3})
+    r_pe = await run_backtest('EMA Crossover', 'NIFTY', 3, {'trade_options': True, 'option_type': 'PE', 'target_pct': 5, 'stop_loss_pct': 3})
     exec_pe = [t for t in r_pe['trades_log'] if t['reason'] not in ('MISSING DATA', 'ENTRY DATA MISSING', 'EXIT DATA MISSING')]
     check("Force PE trades executed", len(exec_pe) > 0, f"Count: {len(exec_pe)}")
     all_pe = all(t['type'] == 'PE' and t['side'] == 'BUY' for t in exec_pe)
