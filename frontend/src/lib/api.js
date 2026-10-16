@@ -1,7 +1,18 @@
 import axios from "axios";
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || "https://api.your-production-domain.com";
-export const API = `${BACKEND_URL}/api`;
+// In production (same-domain or reverse-proxy), fallback to window.location.origin or relative path
+const getBackendUrl = () => {
+  if (process.env.REACT_APP_BACKEND_URL && !process.env.REACT_APP_BACKEND_URL.includes("your-production-domain")) {
+    return process.env.REACT_APP_BACKEND_URL;
+  }
+  if (typeof window !== "undefined" && window.location.origin) {
+    return window.location.origin;
+  }
+  return "";
+};
+
+const BACKEND_URL = getBackendUrl();
+export const API = BACKEND_URL ? `${BACKEND_URL}/api` : "/api";
 console.log("[frontend] API baseURL:", API);
 
 export const api = axios.create({ baseURL: API });
