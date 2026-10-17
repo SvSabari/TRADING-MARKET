@@ -88,6 +88,32 @@ async def list_connections(
     return {"connections": out, "available": ALL_BROKERS, "schemas": BROKER_SCHEMAS}
 
 
+@router.post("/auto-renew")
+async def trigger_auto_renew(
+    user: User = Depends(get_current_user),
+):
+    """Manually trigger daily session auto-renewal for all configured brokers."""
+    from services.auto_session_manager import renew_all_sessions
+    summary = await renew_all_sessions(force=True)
+    return summary
+
+
+@router.get("/auto-renew/status")
+async def get_auto_renew_status(
+    user: User = Depends(get_current_user),
+):
+    """Get the current status of the morning auto-session renewal scheduler."""
+    from services.auto_session_manager import auto_session_scheduler, get_ist_now, get_today_str
+    now_ist = get_ist_now()
+    return {
+        "scheduler_running": auto_session_scheduler.running,
+        "last_run_date": auto_session_scheduler.last_run_date,
+        "current_time_ist": now_ist.strftime("%Y-%m-%d %H:%M:%S IST"),
+        "scheduled_time": "08:30:00 IST (Mon-Fri)",
+        "today": get_today_str(),
+    }
+
+
 @router.post("")
 async def upsert(
     body: BrokerConnectionUpsert,

@@ -29,6 +29,7 @@ from services.strategy_scheduler import scheduler as strategy_scheduler  # noqa:
 from services.live_feed_manager import live_feed_manager  # noqa: E402
 from services.anomaly_sweep import anomaly_sweeper  # noqa: E402
 from services.options_sweeper import options_sweeper  # noqa: E402
+from services.auto_session_manager import auto_session_scheduler  # noqa: E402
 import asyncio
 from services.poi_snapshot import load_snapshot, snapshot_loop
 from services.idempotency import ensure_indexes as ensure_idem_indexes  # noqa: E402
@@ -107,6 +108,7 @@ async def lifespan(app: FastAPI):
     live_feed_manager.start()
     anomaly_sweeper.start()
     options_sweeper.start()
+    auto_session_scheduler.start()
     
     # Snapshot system for POI
     asyncio.create_task(load_snapshot())
@@ -140,6 +142,7 @@ async def lifespan(app: FastAPI):
     strategy_scheduler.stop()
     anomaly_sweeper.stop()
     options_sweeper.stop()
+    auto_session_scheduler.stop()
     live_feed_manager.stop()
     
     if 'poi_task' in locals() and not poi_task.done():
