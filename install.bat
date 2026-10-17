@@ -62,11 +62,12 @@ echo [*] Upgrading pip...
 python -m pip install --upgrade pip --quiet
 
 echo [*] Installing required Python packages from requirements.txt...
-pip install -r requirements.txt
+python -m pip install -r requirements.txt
+python -m pip install "greenlet>=3.0.0" "sqlalchemy[asyncio]>=2.0.30"
 if errorlevel 1 (
     echo.
     echo [WARNING] Some dependencies had warnings. Attempting core packages...
-    pip install fastapi uvicorn sqlalchemy aiomysql pymysql pydantic pydantic-settings python-dotenv cryptography passlib bcrypt PyJWT pyotp httpx websockets requests pandas numpy pyarrow pya3
+    python -m pip install fastapi uvicorn sqlalchemy greenlet aiomysql pymysql pydantic pydantic-settings python-dotenv cryptography passlib bcrypt PyJWT pyotp httpx websockets requests pandas numpy pyarrow pya3
 )
 echo [OK] Backend packages installed successfully!
 
