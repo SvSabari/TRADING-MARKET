@@ -202,5 +202,14 @@ for r in (
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("server:app", host="0.0.0.0", port=8001, reload=True)
+    host = os.environ.get("HOST", "127.0.0.1")
+    port = int(os.environ.get("PORT", 8001))
+    try:
+        uvicorn.run("server:app", host=host, port=port, reload=True)
+    except OSError as e:
+        if "10013" in str(e) or "access permissions" in str(e).lower():
+            logger.warning("Port %d or host %s forbidden, attempting 127.0.0.1:8002...", port, host)
+            uvicorn.run("server:app", host="127.0.0.1", port=8002, reload=True)
+        else:
+            raise
 
